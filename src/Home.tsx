@@ -5,7 +5,7 @@ import { BaseProvider, TransactionReceipt, TransactionRequest, Web3Provider } fr
 import { BigNumber, ethers } from "ethers"
 
 import config, { SupportedChainId, SupportedChainInfo, L2ChainInfo } from './config'
-import { run as flashbotsRun } from './flashbots'
+import { estimateCost, run as flashbotsRun } from './flashbots'
 
 export default function Home(props: {}) {
   // const { account, activate, active, library } = useWeb3React<Web3Provider>()
@@ -32,6 +32,7 @@ export default function Home(props: {}) {
 
   const [devAddr, setDevAddr] = useState(config.devAddr)
   const [feesPercentage, setFeesPercentage] = useState(10)
+  const [cost, setCost] = useState(BigNumber.from(0))
   const [gas, setGas] = useState(BigNumber.from('250000'))
   const [gasMultiply, setGasMultiply] = useState(BigNumber.from('1'))
   const [timeout, setTimeout] = useState(240)
@@ -58,7 +59,7 @@ export default function Home(props: {}) {
       return
     }
 
-    flashbotsRun({
+    const options = {
       provider: provider,
       timeout: timeout * 1000,
       relayRpc,
@@ -72,33 +73,67 @@ export default function Home(props: {}) {
       feesPercentage,
       gas,
       gasMultiply
-    }).then(receipt => {
-      console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
-      setTxReceipt(receipt)
-    })
-    .catch(e => {
-      console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
-    })
+    }
+
+    flashbotsRun(options)
+      .then(receipt => {
+        console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+        setTxReceipt(receipt)
+      })
+      .catch(e => {
+        console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+      })
   }
 
   async function onClickCheckInfo(event: React.MouseEvent) {
     event.preventDefault()
+
+    let publicWallet
     try {
-      const publicWallet = new ethers.Wallet(publicWalletKey)
+      publicWallet = new ethers.Wallet(publicWalletKey)
       setPublicWallet(publicWallet.address)
     } catch (e: any) {
       alert('your exposed private key error: ' + e.message)
+      return
     }
 
+    let privateWallet
     try {
-      const privateWallet = new ethers.Wallet(privateWalletKey)
+      privateWallet = new ethers.Wallet(privateWalletKey)
       setPrivateWallet(privateWallet.address)
     } catch (e: any) {
       alert('your private key error: ' + e.message)
+      return
     }
 
     if (!ethers.utils.isAddress(erc20Addr)) {
       alert('erc20 address is invalid')
+      return
+    }
+
+    const options = {
+      provider: provider,
+      timeout: timeout * 1000,
+      relayRpc,
+      relayNetwork,
+      onlyEstimateCost: true,
+      tryblocks,
+      erc20Addr,
+      privateKey: privateWalletKey,
+      publicKey: publicWalletKey,
+      devAddr,
+      feesPercentage,
+      gas,
+      gasMultiply
+    }
+
+    const cost = await estimateCost(options)
+    setCost(cost)
+
+    const payerBal = await provider.getBalance(privateWallet.address)
+    if (payerBal.lt(cost)) {
+      alert('payer balance is not enough')
+      return
     }
 
     setCheckPass(true)
@@ -132,6 +167,7 @@ export default function Home(props: {}) {
       <div>
         <div><span>your exposed account: {publicWallet}</span></div>
         <div><span>receive account: {privateWallet}</span></div>
+        <div><span>your receive account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
         <div><span>service addr: {config.devAddr}</span></div>
         <div><span>service fees: {feesPercentage + '%'}</span></div>
         {/* <div><span>you will receive: {ethers.utils.formatEther(receiveAmount)}</span></div> */}

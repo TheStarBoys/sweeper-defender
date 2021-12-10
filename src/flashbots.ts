@@ -128,3 +128,31 @@ export const run = async (
     return provider.waitForTransaction(tx.txHash, confirmations, timeout)
   }
 }
+
+export const estimateCost = async (
+  options: Options
+) => {
+  const {
+    provider,
+    erc20Addr, privateKey, publicKey, devAddr,
+    feesPercentage, gas, gasMultiply
+  } = options
+
+  const privateWallet = new ethers.Wallet(privateKey, provider)
+  const privateAddr = privateWallet.address
+  const publicWallet = new ethers.Wallet(publicKey, provider)
+  const publicAddr = publicWallet.address
+
+  const txs = await getFundingAndTransferTxs(
+    provider,
+    erc20Addr,
+    privateAddr,
+    publicAddr,
+    devAddr,
+    feesPercentage,
+    gasMultiply,
+    gas
+  )
+
+  return calculateCost(txs)
+}
