@@ -8,6 +8,13 @@ module.exports = function(app) {
     ws: true,
     pathRewrite:{'^/flashbots-relay-goerli':''}
   }))
+
+  app.use(createProxyMiddleware('/flashbots-relay', {
+    target: 'https://relay.flashbots.net',
+    changeOrigin: true ,
+    ws: true,
+    pathRewrite:{'^/flashbots-relay':''}
+  }))
 }
 
 // export default function(app) {

@@ -122,14 +122,9 @@ export const run = async (
   console.log("bundles submitted");
 
   let tx = simulation.results.pop()
+
   if (tx) {
     console.log('wait for transaction...')
-    provider.waitForTransaction(tx.txHash, confirmations, timeout)
-      .then(receipt => {
-        console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
-      })
-      .catch(e => {
-        console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
-      })
+    return provider.waitForTransaction(tx.txHash, confirmations, timeout)
   }
 }
