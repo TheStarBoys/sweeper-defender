@@ -4,7 +4,7 @@
   "private": true,
   "dependencies": {
     "@babel/core": "7.12.3",
-    "@flashbots/ethers-provider-bundle": "^0.4.2",
+    "@flashbots/ethers-provider-bundle": "0.3.1",
     "@pmmmwh/react-refresh-webpack-plugin": "0.4.3",
     "@svgr/webpack": "5.5.0",
     "@testing-library/jest-dom": "^5.11.4",

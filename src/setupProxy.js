@@ -4,7 +4,9 @@ module.exports = function(app) {
   console.log('setupProxy...')
   app.use(createProxyMiddleware('/flashbots-relay-goerli', {
     target: 'https://relay-goerli.flashbots.net',
-    changeOrigin: true 
+    changeOrigin: true ,
+    ws: true,
+    pathRewrite:{'^/flashbots-relay-goerli':''}
   }))
 }
 

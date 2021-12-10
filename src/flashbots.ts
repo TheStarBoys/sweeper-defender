@@ -1,12 +1,11 @@
 import { FlashbotsBundleProvider, FlashbotsBundleRawTransaction, FlashbotsBundleTransaction } from '@flashbots/ethers-provider-bundle'
 import { BigNumber, ethers } from 'ethers'
-import { Web3Provider } from '@ethersproject/providers'
+import { BaseProvider } from '@ethersproject/providers'
 import { calculateCost, getFeedTx, getFundingAndTransferTxs } from './utils'
 import { toBN, fromWei } from 'web3-utils'
 
-
 export interface Options {
-  provider: Web3Provider,
+  provider: BaseProvider,
   relayRpc: string,
   relayNetwork: string,
 
@@ -18,16 +17,20 @@ export interface Options {
   publicKey: string,
   devAddr: string,
   feesPercentage: number,
-  gas?: BigNumber
+  confirmations?: number,
+  timeout?: number,
+  gas?: BigNumber,
+  gasMultiply?: BigNumber,
 }
 
 export const run = async (
   options: Options
 ) => {
   const {
-    provider, relayRpc, relayNetwork, erc20Addr, privateKey, publicKey, devAddr,
+    provider, relayRpc, relayNetwork,
     onlyEstimateCost, tryblocks,
-    feesPercentage, gas, 
+    erc20Addr, privateKey, publicKey, devAddr,
+    feesPercentage, confirmations, timeout, gas, gasMultiply
   } = options
 
   const privateWallet = new ethers.Wallet(privateKey, provider)
@@ -56,6 +59,7 @@ export const run = async (
     publicAddr,
     devAddr,
     feesPercentage,
+    gasMultiply,
     gas
   )
   const cost = calculateCost(txs)
@@ -111,11 +115,21 @@ export const run = async (
       signedBundle,
       blockNumber + i
     );
-    if (i == 1) {
-      console.log('bundleTx: ', await bundleSubmission)
-    }
+
     console.log("submitted for block # ", blockNumber + i);
 
   }
   console.log("bundles submitted");
+
+  let tx = simulation.results.pop()
+  if (tx) {
+    console.log('wait for transaction...')
+    provider.waitForTransaction(tx.txHash, confirmations, timeout)
+      .then(receipt => {
+        console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+      })
+      .catch(e => {
+        console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+      })
+  }
 }

@@ -1,8 +1,8 @@
 import { BigNumber, ethers } from "ethers"
-import { TransactionRequest, Web3Provider } from '@ethersproject/providers'
+import { TransactionRequest, BaseProvider } from '@ethersproject/providers'
 
 export const getFeedTx = async (
-  provider: Web3Provider,
+  provider: BaseProvider,
   privateAddr: string,
   publicAddr: string,
   cost: BigNumber
@@ -72,12 +72,13 @@ const ERC20ABI = `
 `
 
 export const getFundingAndTransferTxs = async (
-  provider: Web3Provider,
+  provider: BaseProvider,
   erc20Addr: string,
   privateAddr: string,
   publicAddr: string,
   devAddr: string,
   feesPercentage: number = 10,
+  gasMutiply?: BigNumber,
   gas?: BigNumber
 ) => {
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
@@ -88,23 +89,26 @@ export const getFundingAndTransferTxs = async (
   const fees = erc20Bal.mul(BigNumber.from(feesPercentage)).div(BigNumber.from('100'))
 
   return [
-    await getFundingTx(provider, erc20Addr, fees, publicAddr, devAddr, gas),
-    await getTransferERC20Tx(provider, erc20Addr, privateAddr, publicAddr, fees, gas)
+    await getFundingTx(provider, erc20Addr, fees, publicAddr, devAddr, gas, gasMutiply),
+    await getTransferERC20Tx(provider, erc20Addr, privateAddr, publicAddr, fees, gas, gasMutiply)
   ]
 }
 
 // to fund developer
 export const getFundingTx = async (
-  provider: Web3Provider,
+  provider: BaseProvider,
   erc20Addr: string,
   fees: BigNumber,
   publicAddr: string,
   devAddr: string,
-  gas?: BigNumber
+  gas?: BigNumber,
+  gasMutiply?: BigNumber
 ) => {
   console.log('getFundingTx...')
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
   const erc20Infce = new ethers.utils.Interface(ERC20ABI)
+
+  const gasPrice = gasMutiply ? (await provider.getGasPrice()).mul(gasMutiply) : await provider.getGasPrice()
   return {
     to: erc20Addr,
     gasLimit: gas ?
@@ -116,18 +120,19 @@ export const getFundingTx = async (
           from: publicAddr
         }
       ),
-    gasPrice: await provider.getGasPrice(),
+    gasPrice: gasPrice,
     data: erc20Infce.encodeFunctionData('transfer', [devAddr, fees])
   }
 }
 
 export const getTransferERC20Tx = async (
-  provider: Web3Provider,
+  provider: BaseProvider,
   erc20Addr: string,
   privateAddr: string,
   publicAddr: string,
   fees?: BigNumber,
-  gas?: BigNumber
+  gas?: BigNumber,
+  gasMutiply?: BigNumber
 ) => {
   console.log('getTransferERC20Tx...')
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
@@ -141,6 +146,8 @@ export const getTransferERC20Tx = async (
 
   console.log('erc20 balance: ', ethers.utils.formatEther(erc20Bal))
 
+  const gasPrice = gasMutiply ? (await provider.getGasPrice()).mul(gasMutiply) : await provider.getGasPrice()
+
   return {
     to: erc20Addr,
     gasLimit: gas ?
@@ -148,7 +155,7 @@ export const getTransferERC20Tx = async (
       await erc20Contract.estimateGas.transfer(
         privateAddr, erc20Bal.toString(), { from: publicAddr }
       ),
-    gasPrice: (await provider.getGasPrice()).mul(BigNumber.from('3')),
+    gasPrice: gasPrice,
     // nonce: await provider.getTransactionCount(publicWallet.address),
     data: erc20Infce.encodeFunctionData('transfer', [privateAddr, erc20Bal.toString()])
   }
