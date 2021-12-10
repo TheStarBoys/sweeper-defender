@@ -16,7 +16,7 @@ export default function Home(props: {}) {
   feesPercentage: number,
   gas?: BigNumber
   */
-  const [relayRpc, setRelayRpc] = useState('https://relay-goerli.flashbots.net')
+  const [relayRpc, setRelayRpc] = useState('/flashbots-relay-goerli')
   const [relayNetwork, setRelayNetwork] = useState('goerli')
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(10)
