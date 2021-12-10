@@ -23,9 +23,9 @@ export default function Home(props: {}) {
   const [erc20Addr, setErc20Addr] = useState('0x4734C809Cd59C87753Ebe95B494C0056513ceF85')
   const [privateWallet, setPrivateWallet] = useState('073e51e855e1882bcba7c2cacf92d9c9ad94dfe9345b0e9f07fcf5adf9e9f22b')
   const [publicWallet, setPublicWallet] = useState('665a4dba0eab0bda352d7d6c2b0ef9ac5fdb28f4ae0c9075f9d7fc10a049ab01')
-  const [devAddr, setDevAddr] = useState('0x4Fc27FB1830Ef7F7Ade3c51D81e7214F98D7Df2d')
+  const [devAddr, setDevAddr] = useState('0x9eFC76c32a8774d35c2CDAe06f2053DF1A40b288')
   const [feesPercentage, setFeesPercentage] = useState(10)
-  const [gas, setGas] = useState()
+  const [gas, setGas] = useState(BigNumber.from('250000'))
   const [gasMultiply, setGasMultiply] = useState(BigNumber.from('1'))
   const [timeout, setTimeout] = useState(240)
 

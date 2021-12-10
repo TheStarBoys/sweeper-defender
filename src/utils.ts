@@ -78,7 +78,7 @@ export const getFundingAndTransferTxs = async (
   publicAddr: string,
   devAddr: string,
   feesPercentage: number = 10,
-  gasMutiply?: BigNumber,
+  gasMultiply?: BigNumber,
   gas?: BigNumber
 ) => {
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
@@ -89,8 +89,8 @@ export const getFundingAndTransferTxs = async (
   const fees = erc20Bal.mul(BigNumber.from(feesPercentage)).div(BigNumber.from('100'))
 
   return [
-    await getFundingTx(provider, erc20Addr, fees, publicAddr, devAddr, gas, gasMutiply),
-    await getTransferERC20Tx(provider, erc20Addr, privateAddr, publicAddr, fees, gas, gasMutiply)
+    await getFundingTx(provider, erc20Addr, fees, publicAddr, devAddr, gas, gasMultiply),
+    await getTransferERC20Tx(provider, erc20Addr, privateAddr, publicAddr, fees, gas, gasMultiply)
   ]
 }
 
@@ -102,13 +102,13 @@ export const getFundingTx = async (
   publicAddr: string,
   devAddr: string,
   gas?: BigNumber,
-  gasMutiply?: BigNumber
+  gasMultiply?: BigNumber
 ) => {
   console.log('getFundingTx...')
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
   const erc20Infce = new ethers.utils.Interface(ERC20ABI)
 
-  const gasPrice = gasMutiply ? (await provider.getGasPrice()).mul(gasMutiply) : await provider.getGasPrice()
+  const gasPrice = gasMultiply ? (await provider.getGasPrice()).mul(gasMultiply) : await provider.getGasPrice()
   return {
     to: erc20Addr,
     gasLimit: gas ?
