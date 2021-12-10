@@ -132,6 +132,7 @@ export default function Home(props: {}) {
       <div>
         <div><span>your exposed account: {publicWallet}</span></div>
         <div><span>receive account: {privateWallet}</span></div>
+        <div><span>service addr: {config.devAddr}</span></div>
         <div><span>service fees: {feesPercentage + '%'}</span></div>
         {/* <div><span>you will receive: {ethers.utils.formatEther(receiveAmount)}</span></div> */}
       </div>
