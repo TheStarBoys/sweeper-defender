@@ -6,6 +6,7 @@ import { BigNumber, ethers } from "ethers"
 
 import { SupportedChainId, SupportedChainInfo, L2ChainInfo } from './config'
 import { estimateCost, run as flashbotsRun } from './flashbots'
+import { ERC20, ERC20__factory } from "./contracts"
 
 interface ExecutionInfo {
   txReceipt?: TransactionReceipt
@@ -31,6 +32,9 @@ export default function Home(props: {}) {
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(15)
   const [erc20Addr, setErc20Addr] = useState('')
+  const [symbol, setSymbol] = useState('')
+  const [erc20Bal, setErc20Bal] = useState(BigNumber.from(0))
+  const [erc20, setErc20] = useState<ERC20>()
   const [privateWalletKey, setPrivateWalletKey] = useState('')
   const [privateWallet, setPrivateWallet] = useState('')
   const [publicWalletKey, setPublicWalletKey] = useState('')
@@ -142,6 +146,19 @@ export default function Home(props: {}) {
       return
     }
 
+    const erc20 = ERC20__factory.connect(erc20Addr, provider)
+    setErc20(erc20)
+    if (erc20) {
+      const erc20Bal = await erc20.callStatic.balanceOf(publicWallet.address)
+      if (erc20Bal.eq(BigNumber.from(0))) {
+        alert('your ER20 balance is zero')
+        return
+      }
+      setErc20Bal(erc20Bal)
+      setSymbol(await erc20.callStatic.symbol())
+      setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
+    }
+
     const options = {
       provider: provider,
       timeout: timeout * 1000,
@@ -210,7 +227,9 @@ export default function Home(props: {}) {
       <div>
         <div><span>your exposed account: {publicWallet}</span></div>
         <div><span>receiver account: {privateWallet}</span></div>
-        <div><span>your receive account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
+        <div><span>your exposed account owned: {ethers.utils.formatEther(erc20Bal)} {symbol}</span></div>
+        <div><span>your receiver account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
+        <div><span>your receiver account will receive: {ethers.utils.formatEther(receiveAmount)} {symbol}</span></div>
         <div><span>service addr: {devAddr}</span></div>
         <div><span>service fees: {feesPercentage} %</span></div>
         {/* <div><span>you will receive: {ethers.utils.formatEther(receiveAmount)}</span></div> */}
