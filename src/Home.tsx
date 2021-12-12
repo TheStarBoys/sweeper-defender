@@ -214,7 +214,13 @@ export default function Home(props: {}) {
         </div>
         <div>
           <span>gas for contract execution: </span>
-          <input type="text" defaultValue={gas.toString()} onChange={(e) => setGas(BigNumber.from(e.currentTarget.value))} />
+          <input type="text" defaultValue={gas.toString()} onChange={(e) => {
+            try {
+              setGas(BigNumber.from(e.currentTarget.value))
+            } catch(e: any) {
+              console.warn('gas is invalid: ', e.message)
+            }
+          }} />
         </div>
         <div>
           <span>gas multiply: </span>
