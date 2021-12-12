@@ -218,7 +218,14 @@ export default function Home(props: {}) {
         </div>
         <div>
           <span>gas multiply: </span>
-          <input type="text" defaultValue={gasMultiply.toString()} onChange={(e) => setGasMultiply(BigNumber.from(e.currentTarget.value))} />
+          <input type="text" defaultValue={gasMultiply.toString()} onChange={(e) => {
+            const value = e.currentTarget.value
+            try {
+              setGasMultiply(BigNumber.from(value))
+            } catch(e: any) {
+              console.warn('gas multiply is invalid: ', e.message)
+            }
+          }} />
         </div>
       </div>
       <button onClick={onClickCheckInfo}>
