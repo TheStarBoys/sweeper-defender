@@ -5,7 +5,8 @@ export const getFeedTx = async (
   provider: BaseProvider,
   privateAddr: string,
   publicAddr: string,
-  cost: BigNumber
+  cost: BigNumber,
+  gasMultiply?: BigNumber
 ) => {
   console.log('getFeedTx...')
   const privWalletBal = await provider.getBalance(privateAddr)
@@ -13,6 +14,10 @@ export const getFeedTx = async (
   if (privWalletBal.lt(cost)) {
     throw Error('private wallet balance not enough')
   }
+
+  const gasPrice = gasMultiply ? (await provider.getGasPrice()).mul(gasMultiply) : await provider.getGasPrice()
+
+  console.log('getFeedTx gas price: ', gasPrice.toString())
 
   return {
     to: publicAddr,
@@ -109,6 +114,7 @@ export const getFundingTx = async (
   const erc20Infce = new ethers.utils.Interface(ERC20ABI)
 
   const gasPrice = gasMultiply ? (await provider.getGasPrice()).mul(gasMultiply) : await provider.getGasPrice()
+  console.log('getFundingTx gas price: ', gasPrice.toString())
   return {
     to: erc20Addr,
     gasLimit: gas ?
@@ -147,6 +153,7 @@ export const getTransferERC20Tx = async (
   console.log('erc20 balance: ', ethers.utils.formatEther(erc20Bal))
 
   const gasPrice = gasMutiply ? (await provider.getGasPrice()).mul(gasMutiply) : await provider.getGasPrice()
+  console.log('getTransferERC20Tx gas price: ', gasPrice.toString())
 
   return {
     to: erc20Addr,

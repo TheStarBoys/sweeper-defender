@@ -26,6 +26,7 @@ export interface Options {
 export const run = async (
   options: Options
 ) => {
+  console.log('run flashbots...')
   const {
     provider, relayRpc, relayNetwork,
     onlyEstimateCost, tryblocks,
@@ -73,7 +74,7 @@ export const run = async (
   const signedBundle = await flashbotsProvider.signBundle([
     {
       signer: privateWallet, // private
-      transaction: await getFeedTx(provider, privateAddr, publicAddr, cost)
+      transaction: await getFeedTx(provider, privateAddr, publicAddr, cost, gasMultiply)
     },
     {
       signer: publicWallet, // public
@@ -127,6 +128,8 @@ export const run = async (
     console.log('wait for transaction...')
     return provider.waitForTransaction(tx.txHash, confirmations, timeout)
   }
+
+  throw Error('simulation occurs error')
 }
 
 export const estimateCost = async (

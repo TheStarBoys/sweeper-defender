@@ -72,6 +72,7 @@ export default function Home(props: {}) {
   // }
 
   async function execute(event: React.MouseEvent) {
+    console.log('execute...')
     event.preventDefault()
     // if (!account || !library) return
     if (!checkPass) {
@@ -106,7 +107,7 @@ export default function Home(props: {}) {
         console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
         setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
       })
-    
+
     setCheckPass(false)
   }
 
@@ -121,7 +122,10 @@ export default function Home(props: {}) {
   }
 
   async function onClickCheckInfo(event: React.MouseEvent) {
+    console.log('onClickCheckInfo...')
     event.preventDefault()
+
+    console.log('check public wallet...')
 
     let publicWallet
     try {
@@ -132,6 +136,7 @@ export default function Home(props: {}) {
       return
     }
 
+    console.log('check private wallet...')
     let privateWallet
     try {
       privateWallet = new ethers.Wallet(privateWalletKey)
@@ -141,6 +146,7 @@ export default function Home(props: {}) {
       return
     }
 
+    console.log(`check erc20 address ${erc20Addr}...`)
     if (!ethers.utils.isAddress(erc20Addr)) {
       alert('erc20 address is invalid')
       return
@@ -149,13 +155,26 @@ export default function Home(props: {}) {
     const erc20 = ERC20__factory.connect(erc20Addr, provider)
     setErc20(erc20)
     if (erc20) {
-      const erc20Bal = await erc20.callStatic.balanceOf(publicWallet.address)
-      if (erc20Bal.eq(BigNumber.from(0))) {
-        alert('your ER20 balance is zero')
+      console.log('check erc20 balance...')
+      try {
+        const erc20Bal = await erc20.callStatic.balanceOf(publicWallet.address)
+        if (erc20Bal.eq(BigNumber.from(0))) {
+          alert('your ER20 balance is zero')
+          return
+        }
+        setErc20Bal(erc20Bal)
+      } catch(e: any) {
+        console.error('check erc20 balance err: ', e.message)
         return
       }
-      setErc20Bal(erc20Bal)
-      setSymbol(await erc20.callStatic.symbol())
+      
+      try {
+        console.log('try get erc20 symbol...')
+        setSymbol(await erc20.callStatic.symbol())
+      } catch (e: any) {
+        console.warn('maybe this erc20 does not have symbol method: ', e.message)
+        setSymbol('units')
+      }
       setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
     }
 
@@ -175,15 +194,22 @@ export default function Home(props: {}) {
       gasMultiply
     }
 
-    const cost = await estimateCost(options)
-    setCost(cost)
+    try {
+      const cost = await estimateCost(options)
+      setCost(cost)
+    } catch (e: any) {
+      console.error('estimate cost err: ', e.message)
+      return
+    }
 
+    console.log('check payer balance...')
     const payerBal = await provider.getBalance(privateWallet.address)
     if (payerBal.lt(cost)) {
       alert('payer balance is not enough')
       return
     }
 
+    console.log('set check pass')
     setCheckPass(true)
   }
 
@@ -217,7 +243,7 @@ export default function Home(props: {}) {
           <input type="text" defaultValue={gas.toString()} onChange={(e) => {
             try {
               setGas(BigNumber.from(e.currentTarget.value))
-            } catch(e: any) {
+            } catch (e: any) {
               console.warn('gas is invalid: ', e.message)
             }
           }} />
@@ -228,7 +254,7 @@ export default function Home(props: {}) {
             const value = e.currentTarget.value
             try {
               setGasMultiply(BigNumber.from(value))
-            } catch(e: any) {
+            } catch (e: any) {
               console.warn('gas multiply is invalid: ', e.message)
             }
           }} />
