@@ -33,6 +33,7 @@ export default function Home(props: {}) {
   const [tryblocks, setTryblocks] = useState(15)
   const [erc20Addr, setErc20Addr] = useState('')
   const [symbol, setSymbol] = useState('')
+  const [decimals, setDecimals] = useState(18)
   const [erc20Bal, setErc20Bal] = useState(BigNumber.from(0))
   const [erc20, setErc20] = useState<ERC20>()
   const [privateWalletKey, setPrivateWalletKey] = useState('')
@@ -175,6 +176,13 @@ export default function Home(props: {}) {
         console.warn('maybe this erc20 does not have symbol method: ', e.message)
         setSymbol('units')
       }
+
+      try {
+        console.log('try get erc20 decimals...')
+        setDecimals(await erc20.callStatic.decimals())
+      } catch(e: any) {
+        console.warn('maybe this erc20 does not have decimals method: ', e.message)
+      }
       setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
     }
 
@@ -266,9 +274,9 @@ export default function Home(props: {}) {
       <div>
         <div><span>your exposed account: {publicWallet}</span></div>
         <div><span>receiver account: {privateWallet}</span></div>
-        <div><span>your exposed account owned: {ethers.utils.formatEther(erc20Bal)} {symbol}</span></div>
+        <div><span>your exposed account owned: {ethers.utils.formatUnits(erc20Bal, decimals)} {symbol}</span></div>
         <div><span>your receiver account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
-        <div><span>your receiver account will receive: {ethers.utils.formatEther(receiveAmount)} {symbol}</span></div>
+        <div><span>your receiver account will receive: {ethers.utils.formatUnits(receiveAmount, decimals)} {symbol}</span></div>
         <div><span>service addr: {devAddr}</span></div>
         <div><span>service fees: {feesPercentage} %</span></div>
         {/* <div><span>you will receive: {ethers.utils.formatEther(receiveAmount)}</span></div> */}

@@ -84,7 +84,7 @@ export const getFundingAndTransferTxs = async (
   devAddr: string,
   feesPercentage: number = 10,
   gasMultiply?: BigNumber,
-  gas?: BigNumber
+  gas?: BigNumber,
 ) => {
   const erc20Contract = new ethers.Contract(erc20Addr, ERC20ABI, provider)
   const erc20Bal = await erc20Contract.callStatic.balanceOf(publicAddr) as BigNumber
