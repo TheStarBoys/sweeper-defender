@@ -177,3 +177,5 @@ export const calculateCost = (txs: Array<TransactionRequest>) => {
 
   return cost
 }
+
+export const sleep = (delay: number) => new Promise((resolve) => setTimeout(resolve, delay))

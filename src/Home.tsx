@@ -4,8 +4,9 @@ import { InjectedConnector } from '@web3-react/injected-connector'
 import { BaseProvider, TransactionReceipt, TransactionRequest, Web3Provider } from '@ethersproject/providers'
 import { BigNumber, ethers } from "ethers"
 
-import { SupportedChainId, SupportedChainInfo, L2ChainInfo } from './config'
-import { estimateCost, run as flashbotsRun } from './flashbots'
+import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs } from './config'
+import { estimateCost, getBundleTx, run as flashbotsRun } from './flashbots'
+import { TxDefender } from './defender'
 import { ERC20, ERC20__factory } from "./contracts"
 
 interface ExecutionInfo {
@@ -25,10 +26,10 @@ export default function Home(props: {}) {
   */
 
   const [chainId, setChainId] = useState(SupportedChainId.GOERLI)
-  const [provider, setProvider] = useState(ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl))
-  const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[chainId].explorerUrl)
-  const [relayRpc, setRelayRpc] = useState(SupportedChainInfo[chainId].relayRpc)
-  const [relayNetwork, setRelayNetwork] = useState(SupportedChainInfo[chainId].relayNetwork)
+  const [provider, setProvider] = useState(ethers.getDefaultProvider(SupportedChainInfo[SupportedChainId.GOERLI].chainUrl))
+  const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[SupportedChainId.GOERLI].explorerUrl)
+  const [relayRpc, setRelayRpc] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayRpc)
+  const [relayNetwork, setRelayNetwork] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayNetwork)
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(15)
   const [erc20Addr, setErc20Addr] = useState('')
@@ -58,8 +59,12 @@ export default function Home(props: {}) {
     console.log('update network info')
     setProvider(ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl))
     setExplorerUrl(SupportedChainInfo[chainId].explorerUrl)
-    setRelayRpc(SupportedChainInfo[chainId].relayRpc)
-    setRelayNetwork(SupportedChainInfo[chainId].relayNetwork)
+    if (isL2ChainIDs(chainId)) {
+      const info = SupportedChainInfo[chainId] as L2ChainInfo
+      setRelayRpc(info.relayRpc)
+      setRelayNetwork(info.relayNetwork)
+    }
+    
     setDevAddr(SupportedChainInfo[chainId].devAddr)
     setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
   }, [chainId])
@@ -99,15 +104,33 @@ export default function Home(props: {}) {
       gasMultiply
     }
 
-    flashbotsRun(options)
-      .then(receipt => {
-        console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
-        setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
-      })
-      .catch(e => {
-        console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
-        setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
-      })
+    if (isL2ChainIDs(chainId)) {
+      flashbotsRun(options)
+        .then(receipt => {
+          console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+          setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
+        })
+        .catch(e => {
+          console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+          setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
+        })
+    } else {
+      const txs = await getBundleTx(options)
+      const defender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
+      defender.run()
+        .then(receipts => {
+          if (!receipts || receipts.length == 0) return
+          const receipt = receipts[receipts.length-1]
+          console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+          setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
+        }).catch(e => {
+          console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+          setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
+        })
+        .finally(() => {
+          defender.close()
+        })
+    }
 
     setCheckPass(false)
   }
@@ -231,6 +254,7 @@ export default function Home(props: {}) {
           <span>Network: </span>
           <select onChange={onNetworkChange} defaultValue={SupportedChainId.GOERLI}>
             <option value={SupportedChainId.MAINNET}>Mainnet</option>
+            <option value={SupportedChainId.RINKEBY}>Rinkeby</option>
             <option value={SupportedChainId.GOERLI}>Goerli</option>
           </select>
         </div>

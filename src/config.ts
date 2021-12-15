@@ -1,13 +1,26 @@
+const INFURA_KEY = '5db9fb69ed204c2bb38e3c5330b17947'
+
 export enum SupportedChainId {
   MAINNET = 1,
+  RINKEBY = 4,
   GOERLI = 5
 }
 
 export const L1_CHAIN_IDS = [
-
+  SupportedChainId.RINKEBY,
 ] as const
 
 export type SupportedL1ChainId = typeof L1_CHAIN_IDS[number]
+
+export function isL2ChainIDs(chainId: number): boolean {
+  for (let id of L2_CHAIN_IDS) {
+    if (chainId == id) {
+      return true
+    }
+  }
+
+  return false
+}
 
 export const L2_CHAIN_IDS = [
   SupportedChainId.MAINNET,
@@ -19,6 +32,7 @@ export type SupportedL2ChainId = typeof L2_CHAIN_IDS[number]
 export interface L1ChainInfo {
   name: string
   chainUrl: string
+  chainWsUrl: string
   devAddr: string
   feesPercentage: number
   explorerUrl: string
@@ -36,16 +50,26 @@ export type ChainInfo = { readonly [chainId: number]: L1ChainInfo | L2ChainInfo 
 export const SupportedChainInfo: ChainInfo = {
   [SupportedChainId.MAINNET]: {
     name: 'mainnet',
-    chainUrl: 'https://mainnet.infura.io/v3/5db9fb69ed204c2bb38e3c5330b17947',
+    chainUrl: `https://mainnet.infura.io/v3/${INFURA_KEY}`,
+    chainWsUrl: `wss://mainnet.infura.io/ws/v3/${INFURA_KEY}`,
     devAddr: '0x3f7E2b941FF52bC2808f1039c69594FA7e95cd92',
     feesPercentage: 1,
     explorerUrl: 'https://etherscan.io',
     relayRpc: '/flashbots-relay',
     relayNetwork: 'mainnet'
   },
+  [SupportedChainId.RINKEBY]: {
+    name: 'rinkeby',
+    chainUrl: `https://rinkeby.infura.io/v3/${INFURA_KEY}`,
+    chainWsUrl: `wss://rinkeby.infura.io/ws/v3/${INFURA_KEY}`,
+    devAddr: '0x9eFC76c32a8774d35c2CDAe06f2053DF1A40b288',
+    feesPercentage: 10,
+    explorerUrl: 'https://rinkeby.etherscan.io',
+  },
   [SupportedChainId.GOERLI]: {
     name: 'goerli',
-    chainUrl: 'https://goerli.infura.io/v3/5db9fb69ed204c2bb38e3c5330b17947',
+    chainUrl: `https://goerli.infura.io/v3/${INFURA_KEY}`,
+    chainWsUrl: `wss://goerli.infura.io/ws/v3/${INFURA_KEY}`,
     devAddr: '0x9eFC76c32a8774d35c2CDAe06f2053DF1A40b288',
     feesPercentage: 10,
     explorerUrl: 'https://goerli.etherscan.io',
