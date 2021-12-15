@@ -55,6 +55,10 @@ export class TxDefender {
     this.pendingTxSub = this.web3.eth.subscribe("pendingTransactions", (err, res) => {
       if (err) console.error(err)
     })
+
+    for (let tx of txs) {
+      console.log('defender protects tx ', tx.transaction)
+    }
   }
 
   // TODO: Exception handle.
@@ -68,7 +72,7 @@ export class TxDefender {
             continue
           }
           console.log('incoming txHash: ', txResponse.hash)
-          this.onGetTxFromTxPool(txResponse)
+          await this.onGetTxFromTxPool(txResponse)
           break
         } catch (err) {
           console.error(err);
@@ -76,13 +80,15 @@ export class TxDefender {
       }
     })
 
-    for (let i = 0; i < this.txs.length; ) {
+    while (this.curr < this.txs.length) {
       await this.sendTx()
       const succ = await this.waitForTransaction()
       if (!succ) {
         throw Error('wait for transaction time out')
       }
     }
+
+    console.log('defender protects successfully!')
 
     return this.txReceipts
   }
@@ -91,10 +97,10 @@ export class TxDefender {
     await this.pendingTxSub.unsubscribe()
   }
 
-  private onGetTxFromTxPool(incomingTx: TransactionResponse) {
-    if (!this.isHackerTx(incomingTx)) return
+  private async onGetTxFromTxPool(incomingTx: TransactionResponse) {
+    if (!await this.isHackerTx(incomingTx)) return
     console.log("It's hacker tx, try to replace it...")
-    let index = this.indexOfHackerTx(incomingTx)
+    let index = await this.indexOfHackerTx(incomingTx)
 
     const nextGasPrice = BigNumber.from(incomingTx.gasPrice).mul(BigNumber.from(110)).div(BigNumber.from(100))
     this.txs[index].transaction.gasPrice = nextGasPrice
@@ -103,7 +109,13 @@ export class TxDefender {
   }
 
   private async sendTx() {
+    console.log('try send transaction, curr: ', this.curr)
     const bundleTx = this.txs[this.curr]
+    let from = bundleTx.transaction.from
+    if (!from) {
+      from = await bundleTx.signer.getAddress()
+    }
+    bundleTx.transaction.nonce = await this.provider.getTransactionCount(from)
     const signedTx = await bundleTx.signer.signTransaction(bundleTx.transaction)
     const response = await this.provider.sendTransaction(signedTx)
     console.log('send transaction: ', response)
@@ -115,6 +127,8 @@ export class TxDefender {
       // update
       this.txResponses[this.curr] = response
     }
+
+    console.log('send transaction after responses: ', this.txResponses)
   }
 
   private async waitForTransaction() {
@@ -123,11 +137,20 @@ export class TxDefender {
     while (Date.now() - startTime < this.timeout) {
       try{
         const txHash = this.txResponses[this.curr].hash
+        if (!txHash) {
+          sleep(100)
+          continue
+        }
         const response = await this.provider.getTransaction(txHash)
+        if (!response) {
+          sleep(100)
+          continue
+        }
         if (response.blockNumber) {
           const receipt = await this.provider.getTransactionReceipt(txHash)
           this.txReceipts = this.txReceipts.concat(receipt)
           this.curr++
+          console.log(`wait for transaction ${receipt.transactionHash} succ`)
           return true
         }
         await sleep(100)
@@ -140,10 +163,11 @@ export class TxDefender {
     return false
   }
 
-  indexOfHackerTx(incomingTx: TransactionResponse) {
+  async indexOfHackerTx(incomingTx: TransactionResponse) {
     for (let i = 0; i < this.txs.length; i++) {
       const tx = this.txs[i]
-      if (tx.transaction.from == incomingTx.from && tx.transaction.nonce == incomingTx.nonce) {
+      if ((tx.transaction.from == incomingTx.from || await tx.signer.getAddress() == incomingTx.from) &&
+        tx.transaction.nonce == incomingTx.nonce) {
         return i
       }
     }
@@ -151,26 +175,10 @@ export class TxDefender {
     return -1
   }
 
-  isHackerTx(incomingTx: TransactionResponse) {
-    if (this.isProtectiveTx(incomingTx)) return false
-
-    for (let tx of this.txs) {
-      if (tx.transaction.from == incomingTx.from && tx.transaction.nonce == incomingTx.nonce) {
-        return true
-      }
-    }
-
-    return false
-  }
-
-  isProtectiveTx(incomingTx: TransactionResponse) {
-    for (let bundleTx of this.txs) {
-      const tx = bundleTx.transaction
-      if (tx.from == incomingTx.from && tx.to == incomingTx.to &&
-        tx.value == incomingTx.value && tx.gasLimit == incomingTx.gasLimit &&
-        tx.gasPrice == incomingTx.gasPrice && tx.data == incomingTx.data &&
-        tx.nonce == incomingTx.nonce) {
-
+  async isHackerTx(incomingTx: TransactionResponse) {
+    console.log('isHackerTx, tx: ', incomingTx)
+    for (let tx of this.txResponses) {
+      if (tx.hash != incomingTx.hash && tx.from == incomingTx.from && tx.nonce == incomingTx.nonce) {
         return true
       }
     }

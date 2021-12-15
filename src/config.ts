@@ -77,3 +77,8 @@ export const SupportedChainInfo: ChainInfo = {
     relayNetwork: 'goerli'
   }
 }
+
+export enum Mode {
+  FLASHBOTS = 1,
+  DEFENDER = 2
+}

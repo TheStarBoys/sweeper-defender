@@ -4,7 +4,7 @@ import { InjectedConnector } from '@web3-react/injected-connector'
 import { BaseProvider, TransactionReceipt, TransactionRequest, Web3Provider } from '@ethersproject/providers'
 import { BigNumber, ethers } from "ethers"
 
-import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs } from './config'
+import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs, Mode } from './config'
 import { estimateCost, getBundleTx, run as flashbotsRun } from './flashbots'
 import { TxDefender } from './defender'
 import { ERC20, ERC20__factory } from "./contracts"
@@ -30,6 +30,7 @@ export default function Home(props: {}) {
   const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[SupportedChainId.GOERLI].explorerUrl)
   const [relayRpc, setRelayRpc] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayRpc)
   const [relayNetwork, setRelayNetwork] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayNetwork)
+  const [mode, setMode] = useState(Mode.FLASHBOTS)
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(15)
   const [erc20Addr, setErc20Addr] = useState('')
@@ -104,7 +105,7 @@ export default function Home(props: {}) {
       gasMultiply
     }
 
-    if (isL2ChainIDs(chainId)) {
+    if (mode == Mode.FLASHBOTS) {
       flashbotsRun(options)
         .then(receipt => {
           console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
@@ -119,12 +120,13 @@ export default function Home(props: {}) {
       const defender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
       defender.run()
         .then(receipts => {
+          console.log('defender get receipts...')
           if (!receipts || receipts.length == 0) return
           const receipt = receipts[receipts.length-1]
           console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
           setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
         }).catch(e => {
-          console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+          console.trace('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
           setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
         })
         .finally(() => {
@@ -142,6 +144,16 @@ export default function Home(props: {}) {
     if (value in SupportedChainId) {
       console.log('change network to: ', value)
       setChainId(value)
+    }
+  }
+
+  function onModeChange(event: React.ChangeEvent<HTMLSelectElement>) {
+    event.preventDefault()
+
+    const value = Number(event.currentTarget.value)
+    if (value in Mode) {
+      console.log('change mode to: ', value)
+      setMode(value)
     }
   }
 
@@ -257,6 +269,13 @@ export default function Home(props: {}) {
             <option value={SupportedChainId.RINKEBY}>Rinkeby</option>
             <option value={SupportedChainId.GOERLI}>Goerli</option>
           </select>
+          <span> Mode: </span>
+          <select onChange={onModeChange} defaultValue={isL2ChainIDs(chainId) ? Mode.FLASHBOTS : Mode.DEFENDER}>
+            {
+              isL2ChainIDs(chainId) ? <option value={Mode.FLASHBOTS}>Flashbots</option> : null
+            }
+            <option value={Mode.DEFENDER}>Defender</option>
+          </select>
         </div>
         <div>
           <span>your exposed private key: </span>
@@ -300,6 +319,7 @@ export default function Home(props: {}) {
         <div><span>receiver account: {privateWallet}</span></div>
         <div><span>your exposed account owned: {ethers.utils.formatUnits(erc20Bal, decimals)} {symbol}</span></div>
         <div><span>your receiver account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
+        {/* TODO: sometimes the value is not updated. */}
         <div><span>your receiver account will receive: {ethers.utils.formatUnits(receiveAmount, decimals)} {symbol}</span></div>
         <div><span>service addr: {devAddr}</span></div>
         <div><span>service fees: {feesPercentage} %</span></div>
