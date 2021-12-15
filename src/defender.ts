@@ -37,8 +37,8 @@ export class TxDefender {
     this.curr = 0
     this.confirmations = confirmations
     this.timeout = timeout
-    this.getTxMaxCount = 2
-    this.getTxInterval = 500
+    this.getTxMaxCount = 12
+    this.getTxInterval = 100
 
     this.totalValue = BigNumber.from(0)
     this.totalGas = BigNumber.from(0)
@@ -71,7 +71,7 @@ export class TxDefender {
             await sleep(this.getTxInterval)
             continue
           }
-          console.log('incoming txHash: ', txResponse.hash)
+          // console.log('incoming txHash: ', txResponse.hash)
           await this.onGetTxFromTxPool(txResponse)
           break
         } catch (err) {
@@ -99,7 +99,7 @@ export class TxDefender {
 
   private async onGetTxFromTxPool(incomingTx: TransactionResponse) {
     if (!await this.isHackerTx(incomingTx)) return
-    console.log("It's hacker tx, try to replace it...")
+    console.log("It's hacker tx, try to replace: ", incomingTx)
     let index = await this.indexOfHackerTx(incomingTx)
 
     const nextGasPrice = BigNumber.from(incomingTx.gasPrice).mul(BigNumber.from(110)).div(BigNumber.from(100))
@@ -115,16 +115,17 @@ export class TxDefender {
     if (!from) {
       from = await bundleTx.signer.getAddress()
     }
+    // TODO: Fill up nonce before calling sendTx.
     bundleTx.transaction.nonce = await this.provider.getTransactionCount(from)
     const signedTx = await bundleTx.signer.signTransaction(bundleTx.transaction)
     const response = await this.provider.sendTransaction(signedTx)
     console.log('send transaction: ', response)
 
     if (this.curr >= this.txResponses.length) {
-      // insert
+      console.log(`send transaction ${this.curr} first...`)
       this.txResponses = this.txResponses.concat(response)
     } else {
-      // update
+      console.log(`send transaction ${this.curr} to replace hacker tx...`)
       this.txResponses[this.curr] = response
     }
 
@@ -135,31 +136,29 @@ export class TxDefender {
     console.log('wait for transaction, curr: ', this.curr)
     let startTime = Date.now()
     while (Date.now() - startTime < this.timeout) {
-      try{
+      try {
         const txHash = this.txResponses[this.curr].hash
+        console.log('wait fot txhash: ', txHash)
         if (!txHash) {
           sleep(100)
           continue
         }
-        const response = await this.provider.getTransaction(txHash)
-        if (!response) {
+        const receipt = await this.provider.getTransactionReceipt(txHash)
+
+        if (!receipt) {
           sleep(100)
           continue
         }
-        if (response.blockNumber) {
-          const receipt = await this.provider.getTransactionReceipt(txHash)
-          this.txReceipts = this.txReceipts.concat(receipt)
-          this.curr++
-          console.log(`wait for transaction ${receipt.transactionHash} succ`)
-          return true
-        }
-        await sleep(100)
-      } catch(e: any) {
+        this.txReceipts = this.txReceipts.concat(receipt)
+        this.curr++
+        console.log(`wait for transaction ${receipt.transactionHash} succ`)
+        return true
+      } catch (e: any) {
         console.error('wait for transaction err: ', e.message)
         return false
       }
     }
-    
+
     return false
   }
 
@@ -176,7 +175,7 @@ export class TxDefender {
   }
 
   async isHackerTx(incomingTx: TransactionResponse) {
-    console.log('isHackerTx, tx: ', incomingTx)
+    // console.log('isHackerTx, tx: ', incomingTx)
     for (let tx of this.txResponses) {
       if (tx.hash != incomingTx.hash && tx.from == incomingTx.from && tx.nonce == incomingTx.nonce) {
         return true

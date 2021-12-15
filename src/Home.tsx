@@ -116,7 +116,11 @@ export default function Home(props: {}) {
           setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
         })
     } else {
-      const txs = await getBundleTx(options)
+      const defenderOptions = {
+        ...options,
+        gasMultiply: BigNumber.from(1)
+      }
+      const txs = await getBundleTx(defenderOptions)
       const defender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
       defender.run()
         .then(receipts => {
