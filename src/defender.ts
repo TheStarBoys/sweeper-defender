@@ -1,11 +1,11 @@
-import { FlashbotsBundleProvider, FlashbotsBundleRawTransaction, FlashbotsBundleTransaction } from '@flashbots/ethers-provider-bundle'
+import { FlashbotsBundleTransaction } from '@flashbots/ethers-provider-bundle'
 import { BaseProvider, TransactionReceipt, TransactionRequest, TransactionResponse } from '@ethersproject/providers'
-import { BigNumber, ethers } from 'ethers'
+import { BigNumber, ethers, Wallet } from 'ethers'
 import Web3 from 'web3'
-import { time } from 'console'
-import { sleep } from './utils'
+import { calculateCost, getFeedTx, sleep } from './utils'
 import { Subscription } from 'web3-core-subscriptions'
-import { ERC20, SweeperDefender } from './contracts'
+import { ERC20, MinimalForwarder, SweeperDefender } from './contracts'
+import { ForwardRequest, SignForwardRequest } from './metatx'
 
 export class TxDefender {
   /*
@@ -190,8 +190,33 @@ export class TxDefender {
 // TODO:
 // 1. private wallet sends enough ethers to public wallet.
 // 2. public wallet transfers all erc20 tokens to private wallet.
-export function getDefenderBundleTx() {
-
+export async function getDefenderBundleTx(
+  provider: BaseProvider,
+  erc20: ERC20,
+  metatx: MinimalForwarder,
+  defender: SweeperDefender,
+  publicWallet: Wallet,
+  privateWallet: Wallet,
+  gas?: BigNumber
+): Promise<Array<FlashbotsBundleTransaction>> {
+  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
+  const transferTx = await getDelegateFundingAndTransferTx(erc20, metatx, defender, publicWallet, privateWallet)
+  const cost = calculateCost([approveTx, transferTx])
+  const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
+  return [
+    {
+      transaction: feedTx,
+      signer: privateWallet
+    },
+    {
+      transaction: approveTx,
+      signer: publicWallet
+    },
+    {
+      transaction: transferTx,
+      signer: privateWallet
+    }
+  ]
 }
 
 async function getApproveERC20Tx(
@@ -199,8 +224,8 @@ async function getApproveERC20Tx(
   erc20: ERC20,
   defender: SweeperDefender,
   publicAddr: string,
-  gas: BigNumber
-) {
+  gas?: BigNumber
+): Promise<TransactionRequest> {
   const erc20Bal = await erc20.balanceOf(publicAddr)
 
   return {
@@ -216,6 +241,65 @@ async function getApproveERC20Tx(
   }
 }
 
-async function getFundingAndTransferERC20MetaTx() {
-  
+async function getDelegateFundingAndTransferTx(
+  erc20: ERC20,
+  metatx: MinimalForwarder,
+  defender: SweeperDefender,
+  publicWallet: Wallet,
+  privateWallet: Wallet,
+): Promise<TransactionRequest> {
+  const req = await getFundingAndTransferMetaTx(erc20, metatx, defender, publicWallet.address, privateWallet.address)
+  const signature = await SignForwardRequest(publicWallet, req, metatx.address)
+  try {
+    const valid = await metatx.callStatic.verify(req, signature)
+    if (!valid) {
+      throw Error('meta tx is invalid')
+    }
+  } catch(e: any) {
+    throw Error('meta tx call verify failed: ' + e.message)
+  }
+
+  let gas: BigNumber
+  try {
+    const [succ] = await metatx.callStatic.execute(req, signature)
+    if (!succ) {
+      throw Error('meta tx execution is failed')
+    }
+    gas = await metatx.estimateGas.execute(req, signature)
+  } catch(e: any) {
+    throw Error('meta tx call execute failed')
+  }
+
+  const data = metatx.interface.encodeFunctionData('execute', [req, signature])
+  return {
+    from: privateWallet.address,
+    to: metatx.address,
+    gasLimit: gas,
+    data: data
+  }
+}
+
+async function getFundingAndTransferMetaTx(
+  erc20: ERC20,
+  metatx: MinimalForwarder,
+  defender: SweeperDefender,
+  publicAddr: string,
+  privateAddr: string,
+): Promise<ForwardRequest> {
+  let gas: BigNumber
+  try {
+    gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: privateAddr })
+  } catch(e: any) {
+    throw Error('Defender call fundingAndTransfer failed: ' + e.message)
+  }
+  const data = defender.interface.encodeFunctionData('fundingAndTransfer', [erc20.address, privateAddr])
+
+  return {
+    from: publicAddr,
+    to: defender.address,
+    value: 0,
+    gas: gas,
+    nonce: await metatx.getNonce(publicAddr),
+    data: data
+  }
 }

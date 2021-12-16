@@ -6,8 +6,8 @@ import { BigNumber, ethers } from "ethers"
 
 import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs, Mode } from './config'
 import { estimateCost, getBundleTx, run as flashbotsRun } from './flashbots'
-import { TxDefender } from './defender'
-import { ERC20, ERC20__factory } from "./contracts"
+import { TxDefender, getDefenderBundleTx } from './defender'
+import { ERC20, ERC20__factory, MinimalForwarder, MinimalForwarder__factory, SweeperDefender, SweeperDefender__factory } from "./contracts"
 
 interface ExecutionInfo {
   txReceipt?: TransactionReceipt
@@ -16,15 +16,6 @@ interface ExecutionInfo {
 
 export default function Home(props: {}) {
   // const { account, activate, active, library } = useWeb3React<Web3Provider>()
-  /*
-  erc20Addr: string,
-  privateAddr: string,
-  publicAddr: string,
-  devAddr: string,
-  feesPercentage: number,
-  gas?: BigNumber
-  */
-
   const [chainId, setChainId] = useState(SupportedChainId.GOERLI)
   const [provider, setProvider] = useState(ethers.getDefaultProvider(SupportedChainInfo[SupportedChainId.GOERLI].chainUrl))
   const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[SupportedChainId.GOERLI].explorerUrl)
@@ -33,11 +24,17 @@ export default function Home(props: {}) {
   const [mode, setMode] = useState(Mode.FLASHBOTS)
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(15)
+
+  // contracts
   const [erc20Addr, setErc20Addr] = useState('')
   const [symbol, setSymbol] = useState('')
   const [decimals, setDecimals] = useState(18)
   const [erc20Bal, setErc20Bal] = useState(BigNumber.from(0))
   const [erc20, setErc20] = useState<ERC20>()
+
+  const [metatx, setMetatx] = useState<MinimalForwarder>()
+  const [defender, setDefender] = useState<SweeperDefender>()
+
   const [privateWalletKey, setPrivateWalletKey] = useState('')
   const [privateWallet, setPrivateWallet] = useState('')
   const [publicWalletKey, setPublicWalletKey] = useState('')
@@ -116,13 +113,17 @@ export default function Home(props: {}) {
           setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
         })
     } else {
-      const defenderOptions = {
-        ...options,
-        gasMultiply: BigNumber.from(1)
+      if (!erc20 || !metatx || !defender) {
+        alert('This network does not have supported defender yet')
+        return
       }
-      const txs = await getBundleTx(defenderOptions)
-      const defender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
-      defender.run()
+      const txs = await getDefenderBundleTx(
+        provider, erc20, metatx, defender,
+        new ethers.Wallet(publicWallet, provider),
+        new ethers.Wallet(privateWallet, provider)
+      )
+      const txDefender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
+      txDefender.run()
         .then(receipts => {
           console.log('defender get receipts...')
           if (!receipts || receipts.length == 0) return
@@ -134,7 +135,7 @@ export default function Home(props: {}) {
           setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
         })
         .finally(() => {
-          defender.close()
+          txDefender.close()
         })
     }
 
@@ -223,6 +224,19 @@ export default function Home(props: {}) {
         console.warn('maybe this erc20 does not have decimals method: ', e.message)
       }
       setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
+    }
+
+    const contractInfo = SupportedChainInfo[chainId].contractInfo
+    if (contractInfo) {
+      if (contractInfo.MetaTxAddr) {
+        console.log(`setMetatx ${contractInfo.MetaTxAddr}...`)
+        setMetatx(MinimalForwarder__factory.connect(contractInfo.MetaTxAddr, provider))
+      }
+
+      if (contractInfo.SweeperDefenderAddr) {
+        console.log(`setDefender ${contractInfo.SweeperDefenderAddr}...`)
+        setDefender(SweeperDefender__factory.connect(contractInfo.SweeperDefenderAddr, provider))
+      }
     }
 
     const options = {
