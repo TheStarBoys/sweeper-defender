@@ -1,7 +1,6 @@
-import { Signer, TypedDataSigner } from "@ethersproject/abstract-signer";
 import { BigNumberish } from "@ethersproject/bignumber";
 import { BytesLike } from "@ethersproject/bytes";
-import { BaseProvider } from '@ethersproject/providers'
+import { Wallet } from 'ethers'
 
 export interface ForwardRequest {
   from: string
@@ -12,8 +11,8 @@ export interface ForwardRequest {
   data: BytesLike
 }
 
-export async function SignForwardRequest(signer: Signer, req: ForwardRequest, minimalForwarderAddr: string) {
-  const provider = signer.provider
+export async function SignForwardRequest(wallet: Wallet, req: ForwardRequest, minimalForwarderAddr: string) {
+  const provider = wallet.provider
   if (!provider) throw Error('SignForwardRequest got error: signer needs provider')
   const msgParams = {
     domain: {
@@ -78,8 +77,6 @@ export async function SignForwardRequest(signer: Signer, req: ForwardRequest, mi
       ],
     },
   }
-  // TODO: This ethers version does not have supported _signTypedData yet.
-  // const signature = await (signer as TypedDataSigner)._signTypedData(msgParams.domain, msgParams.types, msgParams.message)
-  const signature = ''
+  const signature = await wallet._signTypedData(msgParams.domain, msgParams.types, msgParams.message)
   return signature
 }
