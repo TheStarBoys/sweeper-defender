@@ -86,7 +86,7 @@ export const SupportedChainInfo: ChainInfo = {
     relayNetwork: 'goerli',
     contractInfo: {
       MetaTxAddr: '0xa4EA647A6EF4971955966412a30175AAC1E6B445',
-      SweeperDefenderAddr: '0xD1c8b7eE8C2DDBF1242c17C14c99222c12499d5b'
+      SweeperDefenderAddr: '0x357aaFFcf3651177dCFa523620E16035F4337403'
     }
   }
 }

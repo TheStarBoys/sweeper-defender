@@ -64,7 +64,22 @@ export default function Home(props: {}) {
     }
     
     setDevAddr(SupportedChainInfo[chainId].devAddr)
+
+    const contractInfo = SupportedChainInfo[chainId].contractInfo
+    if (contractInfo) {
+      if (contractInfo.MetaTxAddr) {
+        console.log(`setMetatx ${contractInfo.MetaTxAddr}...`)
+        setMetatx(MinimalForwarder__factory.connect(contractInfo.MetaTxAddr, provider))
+      }
+
+      if (contractInfo.SweeperDefenderAddr) {
+        console.log(`setDefender ${contractInfo.SweeperDefenderAddr}...`)
+        setDefender(SweeperDefender__factory.connect(contractInfo.SweeperDefenderAddr, provider))
+      }
+    }
+
     if (mode == Mode.FLASHBOTS) {
+      console.log('set flashbots feesPercentage...')
       setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
     } else {
       if (defender) {
@@ -239,19 +254,6 @@ export default function Home(props: {}) {
         console.warn('maybe this erc20 does not have decimals method: ', e.message)
       }
       setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
-    }
-
-    const contractInfo = SupportedChainInfo[chainId].contractInfo
-    if (contractInfo) {
-      if (contractInfo.MetaTxAddr) {
-        console.log(`setMetatx ${contractInfo.MetaTxAddr}...`)
-        setMetatx(MinimalForwarder__factory.connect(contractInfo.MetaTxAddr, provider))
-      }
-
-      if (contractInfo.SweeperDefenderAddr) {
-        console.log(`setDefender ${contractInfo.SweeperDefenderAddr}...`)
-        setDefender(SweeperDefender__factory.connect(contractInfo.SweeperDefenderAddr, provider))
-      }
     }
 
     if (mode == Mode.FLASHBOTS) {
