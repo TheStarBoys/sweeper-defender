@@ -215,7 +215,8 @@ export async function getDefenderBundleTx(
   const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
   // TODO: this transaction does not need to protect.
   const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
-  const cost = calculateCost([approveTx, transferTx])
+  // Only approve tx will cost because tranfer tx is metatransaction.
+  const cost = calculateCost([approveTx])
   const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
   return [
     {
