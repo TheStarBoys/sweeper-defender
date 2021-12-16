@@ -150,7 +150,8 @@ export default function Home(props: {}) {
         provider, erc20, metatx, defender,
         new ethers.Wallet(publicWalletKey, provider),
         new ethers.Wallet(privateWalletKey, provider),
-        gas
+        gas,
+        gasMultiply
       )
       const txDefender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
       txDefender.run()
@@ -292,7 +293,7 @@ export default function Home(props: {}) {
           provider, erc20, metatx, defender,
           new ethers.Wallet(publicWallet, provider),
           new ethers.Wallet(privateWallet, provider),
-          gas
+          gas, gasMultiply
         )
         setCost(cost)
       } catch(e: any) {

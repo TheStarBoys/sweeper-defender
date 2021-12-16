@@ -194,12 +194,13 @@ export async function getDefenderBundleTxCost(
   defender: SweeperDefender,
   publicWallet: Wallet,
   privateWallet: Wallet,
-  gas?: BigNumber
+  gas?: BigNumber,
+  gasMultiply?: BigNumber
 ): Promise<BigNumber> {
-  console.log('getDefenderBundleTx...')
-  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
-  const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
-  return calculateCost([approveTx, transferTx])
+  console.log('getDefenderBundleTxCost...')
+  // TODO: There is a bug.
+  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas, gasMultiply)
+  return calculateDefenderCost([approveTx])
 }
 
 export async function getDefenderBundleTx(
@@ -209,29 +210,48 @@ export async function getDefenderBundleTx(
   defender: SweeperDefender,
   publicWallet: Wallet,
   privateWallet: Wallet,
-  gas?: BigNumber
+  gas?: BigNumber,
+  gasMultiply?: BigNumber
 ): Promise<Array<FlashbotsBundleTransaction>> {
   console.log('getDefenderBundleTx...')
-  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
-  // TODO: this transaction does not need to protect.
+  let txs = new Array<FlashbotsBundleTransaction>()
+
+  try {
+    const allowance = await erc20.callStatic.allowance(publicWallet.address, defender.address)
+    const erc20Bal = await erc20.callStatic.balanceOf(publicWallet.address)
+    console.log(`getDefenderBundleTx allowance: ${allowance} erc20Bal: ${erc20Bal}`)
+    if (allowance.lt(erc20Bal)) {
+      console.log('getDefenderBundleTx needs to approve...')
+      const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas, gasMultiply)
+      // Only approve tx will cost because tranfer tx is metatransaction.
+      const cost = calculateDefenderCost([approveTx])
+      const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
+      txs = txs.concat([
+        {
+          transaction: feedTx,
+          signer: privateWallet
+        },
+        {
+          transaction: approveTx,
+          signer: publicWallet
+        }
+      ])
+    } else {
+      // clear gas for transfer tx because approve tx has been mined
+      gas = undefined
+    }
+  } catch (e: any) {
+    throw Error('getDefenderBundleTx try to approve err: ' + e.messsage)
+  }
+
   const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
-  // Only approve tx will cost because tranfer tx is metatransaction.
-  const cost = calculateCost([approveTx])
-  const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
-  return [
-    {
-      transaction: feedTx,
-      signer: privateWallet
-    },
-    {
-      transaction: approveTx,
-      signer: publicWallet
-    },
+
+  return txs.concat([
     {
       transaction: transferTx,
       signer: privateWallet
     }
-  ]
+  ])
 }
 
 async function getApproveERC20Tx(
@@ -239,10 +259,13 @@ async function getApproveERC20Tx(
   erc20: ERC20,
   defender: SweeperDefender,
   publicAddr: string,
-  gas?: BigNumber
+  gas?: BigNumber,
+  gasMultiply?: BigNumber
 ): Promise<TransactionRequest> {
   console.log('getApproveERC20Tx...')
   const erc20Bal = await erc20.balanceOf(publicAddr)
+
+  const gasPrice = gasMultiply ? (await provider.getGasPrice()).mul(gasMultiply) : await provider.getGasPrice()
 
   return {
     to: erc20.address,
@@ -251,7 +274,7 @@ async function getApproveERC20Tx(
       await erc20.estimateGas.approve(
         defender.address, erc20Bal, { from: publicAddr }
       ),
-    gasPrice: await provider.getGasPrice(),
+    gasPrice: gasPrice,
     // nonce: await provider.getTransactionCount(publicWallet.address),
     data: erc20.interface.encodeFunctionData('approve', [defender.address, erc20Bal])
   }
@@ -275,7 +298,7 @@ async function getDelegateFundingAndTransferTx(
     if (!valid) {
       throw Error('meta tx is invalid')
     }
-  } catch(e: any) {
+  } catch (e: any) {
     throw Error('meta tx call verify failed: ' + e.message)
   }
 
@@ -286,7 +309,7 @@ async function getDelegateFundingAndTransferTx(
     // }
     // gas = await metatx.estimateGas.execute(req, signature)
     gas = gas ? gas.mul(2) : BigNumber.from('300000')
-  } catch(e: any) {
+  } catch (e: any) {
     throw Error('meta tx call execute failed: ' + e.message)
   }
 
@@ -312,7 +335,7 @@ async function getFundingAndTransferMetaTx(
   if (!gas) {
     try {
       gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: privateAddr })
-    } catch(e: any) {
+    } catch (e: any) {
       throw Error('Defender call fundingAndTransfer failed: ' + e.message)
     }
   }
@@ -330,4 +353,9 @@ async function getFundingAndTransferMetaTx(
     nonce: await metatx.getNonce(publicAddr),
     data: data
   }
+}
+
+// More cost means more chance to beat with sweeper.
+function calculateDefenderCost(txs: Array<TransactionRequest>) {
+  return calculateCost(txs).mul(2)
 }
