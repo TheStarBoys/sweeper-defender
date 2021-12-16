@@ -88,6 +88,7 @@
     "start": "node scripts/start.js",
     "build": "node scripts/build.js && npm run mvserve",
     "mvserve": "cp ./cmd/serve-go/serve-go ./build/defender && cp ./cmd/serve-go/serve-go.exe ./build/defender.exe",
+    "gencontract": "./node_modules/.bin/typechain --target ethers-v5 --out-dir ./src/contracts './abis/*.json'",
     "test": "node scripts/test.js"
   },
   "eslintConfig": {

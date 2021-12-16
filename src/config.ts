@@ -1,5 +1,13 @@
 const INFURA_KEY = '5db9fb69ed204c2bb38e3c5330b17947'
 
+// Total cost:
+// 0.25 ETH or
+// 0.025 BNB
+export interface ContractInfo {
+  MetaTxAddr?: string // It will cost 1186688 gas
+  SweeperDefenderAddr?: string // It will cost 1298099 gas
+}
+
 export enum SupportedChainId {
   MAINNET = 1,
   RINKEBY = 4,
@@ -36,6 +44,7 @@ export interface L1ChainInfo {
   devAddr: string
   feesPercentage: number
   explorerUrl: string
+  contractInfo?: ContractInfo
 }
 
 export interface L2ChainInfo  extends L1ChainInfo{
@@ -74,7 +83,11 @@ export const SupportedChainInfo: ChainInfo = {
     feesPercentage: 10,
     explorerUrl: 'https://goerli.etherscan.io',
     relayRpc: '/flashbots-relay-goerli',
-    relayNetwork: 'goerli'
+    relayNetwork: 'goerli',
+    contractInfo: {
+      MetaTxAddr: '0xa4EA647A6EF4971955966412a30175AAC1E6B445',
+      SweeperDefenderAddr: '0xD1c8b7eE8C2DDBF1242c17C14c99222c12499d5b'
+    }
   }
 }
 

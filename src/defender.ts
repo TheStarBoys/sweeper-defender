@@ -5,6 +5,7 @@ import Web3 from 'web3'
 import { time } from 'console'
 import { sleep } from './utils'
 import { Subscription } from 'web3-core-subscriptions'
+import { ERC20, SweeperDefender } from './contracts'
 
 export class TxDefender {
   /*
@@ -184,4 +185,37 @@ export class TxDefender {
 
     return false
   }
+}
+
+// TODO:
+// 1. private wallet sends enough ethers to public wallet.
+// 2. public wallet transfers all erc20 tokens to private wallet.
+export function getDefenderBundleTx() {
+
+}
+
+async function getApproveERC20Tx(
+  provider: BaseProvider,
+  erc20: ERC20,
+  defender: SweeperDefender,
+  publicAddr: string,
+  gas: BigNumber
+) {
+  const erc20Bal = await erc20.balanceOf(publicAddr)
+
+  return {
+    to: erc20.address,
+    gasLimit: gas ?
+      gas :
+      await erc20.estimateGas.approve(
+        defender.address, erc20Bal, { from: publicAddr }
+      ),
+    gasPrice: await provider.getGasPrice(),
+    // nonce: await provider.getTransactionCount(publicWallet.address),
+    data: erc20.interface.encodeFunctionData('approve', [defender.address, erc20Bal])
+  }
+}
+
+async function getFundingAndTransferERC20MetaTx() {
+  
 }
