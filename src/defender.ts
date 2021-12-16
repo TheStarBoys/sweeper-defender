@@ -187,9 +187,21 @@ export class TxDefender {
   }
 }
 
-// TODO:
-// 1. private wallet sends enough ethers to public wallet.
-// 2. public wallet transfers all erc20 tokens to private wallet.
+export async function getDefenderBundleTxCost(
+  provider: BaseProvider,
+  erc20: ERC20,
+  metatx: MinimalForwarder,
+  defender: SweeperDefender,
+  publicWallet: Wallet,
+  privateWallet: Wallet,
+  gas?: BigNumber
+): Promise<BigNumber> {
+  console.log('getDefenderBundleTx...')
+  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
+  const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
+  return calculateCost([approveTx, transferTx])
+}
+
 export async function getDefenderBundleTx(
   provider: BaseProvider,
   erc20: ERC20,
@@ -199,8 +211,10 @@ export async function getDefenderBundleTx(
   privateWallet: Wallet,
   gas?: BigNumber
 ): Promise<Array<FlashbotsBundleTransaction>> {
+  console.log('getDefenderBundleTx...')
   const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas)
-  const transferTx = await getDelegateFundingAndTransferTx(erc20, metatx, defender, publicWallet, privateWallet)
+  // TODO: this transaction does not need to protect.
+  const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
   const cost = calculateCost([approveTx, transferTx])
   const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
   return [
@@ -226,6 +240,7 @@ async function getApproveERC20Tx(
   publicAddr: string,
   gas?: BigNumber
 ): Promise<TransactionRequest> {
+  console.log('getApproveERC20Tx...')
   const erc20Bal = await erc20.balanceOf(publicAddr)
 
   return {
@@ -242,14 +257,18 @@ async function getApproveERC20Tx(
 }
 
 async function getDelegateFundingAndTransferTx(
+  provider: BaseProvider,
   erc20: ERC20,
   metatx: MinimalForwarder,
   defender: SweeperDefender,
   publicWallet: Wallet,
   privateWallet: Wallet,
+  gas?: BigNumber
 ): Promise<TransactionRequest> {
-  const req = await getFundingAndTransferMetaTx(erc20, metatx, defender, publicWallet.address, privateWallet.address)
+  console.log('getDelegateFundingAndTransferTx...')
+  const req = await getFundingAndTransferMetaTx(erc20, metatx, defender, publicWallet.address, privateWallet.address, gas)
   const signature = await SignForwardRequest(publicWallet, req, metatx.address)
+  console.log('signature: ', signature)
   try {
     const valid = await metatx.callStatic.verify(req, signature)
     if (!valid) {
@@ -259,15 +278,15 @@ async function getDelegateFundingAndTransferTx(
     throw Error('meta tx call verify failed: ' + e.message)
   }
 
-  let gas: BigNumber
   try {
-    const [succ] = await metatx.callStatic.execute(req, signature)
-    if (!succ) {
-      throw Error('meta tx execution is failed')
-    }
-    gas = await metatx.estimateGas.execute(req, signature)
+    // const [succ] = await metatx.callStatic.execute(req, signature)
+    // if (!succ) {
+    //   throw Error('meta tx execution is failed')
+    // }
+    // gas = await metatx.estimateGas.execute(req, signature)
+    gas = gas ? gas.mul(2) : BigNumber.from('300000')
   } catch(e: any) {
-    throw Error('meta tx call execute failed')
+    throw Error('meta tx call execute failed: ' + e.message)
   }
 
   const data = metatx.interface.encodeFunctionData('execute', [req, signature])
@@ -275,6 +294,7 @@ async function getDelegateFundingAndTransferTx(
     from: privateWallet.address,
     to: metatx.address,
     gasLimit: gas,
+    gasPrice: await provider.getGasPrice(),
     data: data
   }
 }
@@ -285,14 +305,21 @@ async function getFundingAndTransferMetaTx(
   defender: SweeperDefender,
   publicAddr: string,
   privateAddr: string,
+  gas?: BigNumber
 ): Promise<ForwardRequest> {
-  let gas: BigNumber
-  try {
-    gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: privateAddr })
-  } catch(e: any) {
-    throw Error('Defender call fundingAndTransfer failed: ' + e.message)
+  console.log('getFundingAndTransferMetaTx...')
+  if (!gas) {
+    try {
+      gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: privateAddr })
+    } catch(e: any) {
+      throw Error('Defender call fundingAndTransfer failed: ' + e.message)
+    }
   }
+
+  console.log('getFundingAndTransferMetaTx1...')
+
   const data = defender.interface.encodeFunctionData('fundingAndTransfer', [erc20.address, privateAddr])
+  console.log('getFundingAndTransferMetaTx2...')
 
   return {
     from: publicAddr,

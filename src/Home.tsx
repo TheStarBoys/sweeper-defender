@@ -6,7 +6,7 @@ import { BigNumber, ethers } from "ethers"
 
 import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs, Mode } from './config'
 import { estimateCost, getBundleTx, run as flashbotsRun } from './flashbots'
-import { TxDefender, getDefenderBundleTx } from './defender'
+import { TxDefender, getDefenderBundleTx, getDefenderBundleTxCost } from './defender'
 import { ERC20, ERC20__factory, MinimalForwarder, MinimalForwarder__factory, SweeperDefender, SweeperDefender__factory } from "./contracts"
 
 interface ExecutionInfo {
@@ -43,7 +43,7 @@ export default function Home(props: {}) {
   const [devAddr, setDevAddr] = useState(SupportedChainInfo[chainId].devAddr)
   const [feesPercentage, setFeesPercentage] = useState(SupportedChainInfo[chainId].feesPercentage)
   const [cost, setCost] = useState(BigNumber.from(0))
-  const [gas, setGas] = useState(BigNumber.from('250000'))
+  const [gas, setGas] = useState(BigNumber.from('300000'))
   const [gasMultiply, setGasMultiply] = useState(BigNumber.from('2'))
   const [timeout, setTimeout] = useState(240)
 
@@ -64,8 +64,22 @@ export default function Home(props: {}) {
     }
     
     setDevAddr(SupportedChainInfo[chainId].devAddr)
-    setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
-  }, [chainId])
+    if (mode == Mode.FLASHBOTS) {
+      setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
+    } else {
+      if (defender) {
+        console.log('set defender feesPercentage...')
+        try {
+          defender.callStatic.feesPercentage().then(percentage => {
+            setFeesPercentage(percentage.toNumber())
+          })
+        } catch(e: any) {
+          console.error('get defender feesPercentage err: ', e.message)
+          return
+        }
+      }
+    }
+  }, [chainId, mode])
 
   // function connectWallet(event: React.MouseEvent) {
   //   event.preventDefault()
@@ -119,8 +133,9 @@ export default function Home(props: {}) {
       }
       const txs = await getDefenderBundleTx(
         provider, erc20, metatx, defender,
-        new ethers.Wallet(publicWallet, provider),
-        new ethers.Wallet(privateWallet, provider)
+        new ethers.Wallet(publicWalletKey, provider),
+        new ethers.Wallet(privateWalletKey, provider),
+        gas
       )
       const txDefender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
       txDefender.run()
@@ -239,28 +254,49 @@ export default function Home(props: {}) {
       }
     }
 
-    const options = {
-      provider: provider,
-      timeout: timeout * 1000,
-      relayRpc,
-      relayNetwork,
-      onlyEstimateCost: true,
-      tryblocks,
-      erc20Addr,
-      privateKey: privateWalletKey,
-      publicKey: publicWalletKey,
-      devAddr,
-      feesPercentage,
-      gas,
-      gasMultiply
-    }
-
-    try {
-      const cost = await estimateCost(options)
-      setCost(cost)
-    } catch (e: any) {
-      console.error('estimate cost err: ', e.message)
-      return
+    if (mode == Mode.FLASHBOTS) {
+      console.log('check flashbots...')
+      const options = {
+        provider: provider,
+        timeout: timeout * 1000,
+        relayRpc,
+        relayNetwork,
+        onlyEstimateCost: true,
+        tryblocks,
+        erc20Addr,
+        privateKey: privateWalletKey,
+        publicKey: publicWalletKey,
+        devAddr,
+        feesPercentage,
+        gas,
+        gasMultiply
+      }
+  
+      try {
+        const cost = await estimateCost(options)
+        setCost(cost)
+      } catch (e: any) {
+        console.error('estimate cost err: ', e.message)
+        return
+      }
+    } else {
+      console.log('check defender...')
+      if (!erc20 || !metatx || !defender) {
+        alert('This network does not have supported defender yet')
+        return
+      }
+      try {
+        const cost = await getDefenderBundleTxCost(
+          provider, erc20, metatx, defender,
+          new ethers.Wallet(publicWallet, provider),
+          new ethers.Wallet(privateWallet, provider),
+          gas
+        )
+        setCost(cost)
+      } catch(e: any) {
+        console.error('estimate cost err: ', e.message)
+        return
+      }
     }
 
     console.log('check payer balance...')
