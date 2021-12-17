@@ -2,5 +2,9 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { ERC20 } from "./ERC20";
+export type { MinimalForwarder } from "./MinimalForwarder";
+export type { SweeperDefender } from "./SweeperDefender";
 
 export { ERC20__factory } from "./factories/ERC20__factory";
+export { MinimalForwarder__factory } from "./factories/MinimalForwarder__factory";
+export { SweeperDefender__factory } from "./factories/SweeperDefender__factory";

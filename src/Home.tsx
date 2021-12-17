@@ -4,9 +4,10 @@ import { InjectedConnector } from '@web3-react/injected-connector'
 import { BaseProvider, TransactionReceipt, TransactionRequest, Web3Provider } from '@ethersproject/providers'
 import { BigNumber, ethers } from "ethers"
 
-import { SupportedChainId, SupportedChainInfo, L2ChainInfo } from './config'
-import { estimateCost, run as flashbotsRun } from './flashbots'
-import { ERC20, ERC20__factory } from "./contracts"
+import { SupportedChainId, SupportedChainInfo, SupportedL1ChainId, L2ChainInfo, isL2ChainIDs, Mode } from './config'
+import { estimateCost, getBundleTx, run as flashbotsRun } from './flashbots'
+import { TxDefender, getDefenderBundleTx, getDefenderBundleTxCost } from './defender'
+import { ERC20, ERC20__factory, MinimalForwarder, MinimalForwarder__factory, SweeperDefender, SweeperDefender__factory } from "./contracts"
 
 interface ExecutionInfo {
   txReceipt?: TransactionReceipt
@@ -15,27 +16,25 @@ interface ExecutionInfo {
 
 export default function Home(props: {}) {
   // const { account, activate, active, library } = useWeb3React<Web3Provider>()
-  /*
-  erc20Addr: string,
-  privateAddr: string,
-  publicAddr: string,
-  devAddr: string,
-  feesPercentage: number,
-  gas?: BigNumber
-  */
-
   const [chainId, setChainId] = useState(SupportedChainId.GOERLI)
-  const [provider, setProvider] = useState(ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl))
-  const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[chainId].explorerUrl)
-  const [relayRpc, setRelayRpc] = useState(SupportedChainInfo[chainId].relayRpc)
-  const [relayNetwork, setRelayNetwork] = useState(SupportedChainInfo[chainId].relayNetwork)
+  const [provider, setProvider] = useState(ethers.getDefaultProvider(SupportedChainInfo[SupportedChainId.GOERLI].chainUrl))
+  const [explorerUrl, setExplorerUrl] = useState(SupportedChainInfo[SupportedChainId.GOERLI].explorerUrl)
+  const [relayRpc, setRelayRpc] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayRpc)
+  const [relayNetwork, setRelayNetwork] = useState(SupportedChainInfo[SupportedChainId.GOERLI].relayNetwork)
+  const [mode, setMode] = useState(Mode.FLASHBOTS)
   const [onlyEstimateCost, setOnlyEstimateCost] = useState(false)
   const [tryblocks, setTryblocks] = useState(15)
+
+  // contracts
   const [erc20Addr, setErc20Addr] = useState('')
   const [symbol, setSymbol] = useState('')
   const [decimals, setDecimals] = useState(18)
   const [erc20Bal, setErc20Bal] = useState(BigNumber.from(0))
   const [erc20, setErc20] = useState<ERC20>()
+
+  const [metatx, setMetatx] = useState<MinimalForwarder>()
+  const [defender, setDefender] = useState<SweeperDefender>()
+
   const [privateWalletKey, setPrivateWalletKey] = useState('')
   const [privateWallet, setPrivateWallet] = useState('')
   const [publicWalletKey, setPublicWalletKey] = useState('')
@@ -44,7 +43,7 @@ export default function Home(props: {}) {
   const [devAddr, setDevAddr] = useState(SupportedChainInfo[chainId].devAddr)
   const [feesPercentage, setFeesPercentage] = useState(SupportedChainInfo[chainId].feesPercentage)
   const [cost, setCost] = useState(BigNumber.from(0))
-  const [gas, setGas] = useState(BigNumber.from('250000'))
+  const [gas, setGas] = useState(BigNumber.from('300000'))
   const [gasMultiply, setGasMultiply] = useState(BigNumber.from('2'))
   const [timeout, setTimeout] = useState(240)
 
@@ -58,11 +57,44 @@ export default function Home(props: {}) {
     console.log('update network info')
     setProvider(ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl))
     setExplorerUrl(SupportedChainInfo[chainId].explorerUrl)
-    setRelayRpc(SupportedChainInfo[chainId].relayRpc)
-    setRelayNetwork(SupportedChainInfo[chainId].relayNetwork)
+    if (isL2ChainIDs(chainId)) {
+      const info = SupportedChainInfo[chainId] as L2ChainInfo
+      setRelayRpc(info.relayRpc)
+      setRelayNetwork(info.relayNetwork)
+    }
+    
     setDevAddr(SupportedChainInfo[chainId].devAddr)
-    setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
-  }, [chainId])
+
+    const contractInfo = SupportedChainInfo[chainId].contractInfo
+    if (contractInfo) {
+      if (contractInfo.MetaTxAddr) {
+        console.log(`setMetatx ${contractInfo.MetaTxAddr}...`)
+        setMetatx(MinimalForwarder__factory.connect(contractInfo.MetaTxAddr, provider))
+      }
+
+      if (contractInfo.SweeperDefenderAddr) {
+        console.log(`setDefender ${contractInfo.SweeperDefenderAddr}...`)
+        setDefender(SweeperDefender__factory.connect(contractInfo.SweeperDefenderAddr, provider))
+      }
+    }
+
+    if (mode == Mode.FLASHBOTS) {
+      console.log('set flashbots feesPercentage...')
+      setFeesPercentage(SupportedChainInfo[chainId].feesPercentage)
+    } else {
+      if (defender) {
+        console.log('set defender feesPercentage...')
+        try {
+          defender.callStatic.feesPercentage().then(percentage => {
+            setFeesPercentage(percentage.toNumber())
+          })
+        } catch(e: any) {
+          console.error('get defender feesPercentage err: ', e.message)
+          return
+        }
+      }
+    }
+  }, [chainId, mode])
 
   // function connectWallet(event: React.MouseEvent) {
   //   event.preventDefault()
@@ -99,15 +131,44 @@ export default function Home(props: {}) {
       gasMultiply
     }
 
-    flashbotsRun(options)
-      .then(receipt => {
-        console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
-        setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
-      })
-      .catch(e => {
-        console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
-        setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
-      })
+    if (mode == Mode.FLASHBOTS) {
+      flashbotsRun(options)
+        .then(receipt => {
+          console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+          setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
+        })
+        .catch(e => {
+          console.warn('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+          setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
+        })
+    } else {
+      if (!erc20 || !metatx || !defender) {
+        alert('This network does not have supported defender yet')
+        return
+      }
+      const txs = await getDefenderBundleTx(
+        provider, erc20, metatx, defender,
+        new ethers.Wallet(publicWalletKey, provider),
+        new ethers.Wallet(privateWalletKey, provider),
+        gas,
+        gasMultiply
+      )
+      const txDefender = new TxDefender(SupportedChainInfo[chainId].chainWsUrl, provider, txs)
+      txDefender.run()
+        .then(receipts => {
+          console.log('defender get receipts...')
+          if (!receipts || receipts.length == 0) return
+          const receipt = receipts[receipts.length-1]
+          console.log('Sweet! Yuor assets have been withdrawed!! receipt: ', receipt)
+          setExecutionInfo({ msg: 'Sweet! Yuor assets have been withdrawed!!', txReceipt: receipt })
+        }).catch(e => {
+          console.trace('Unfortunately, this flashbots bundle does not have been mined, err: ', e.message)
+          setExecutionInfo({ msg: 'Unfortunately, this flashbots bundle does not have been mined. ' + e.message })
+        })
+        .finally(() => {
+          txDefender.close()
+        })
+    }
 
     setCheckPass(false)
   }
@@ -119,6 +180,16 @@ export default function Home(props: {}) {
     if (value in SupportedChainId) {
       console.log('change network to: ', value)
       setChainId(value)
+    }
+  }
+
+  function onModeChange(event: React.ChangeEvent<HTMLSelectElement>) {
+    event.preventDefault()
+
+    const value = Number(event.currentTarget.value)
+    if (value in Mode) {
+      console.log('change mode to: ', value)
+      setMode(value)
     }
   }
 
@@ -186,28 +257,49 @@ export default function Home(props: {}) {
       setReceiveAmount(erc20Bal.mul(BigNumber.from(100).sub(feesPercentage)).div(BigNumber.from(100)))
     }
 
-    const options = {
-      provider: provider,
-      timeout: timeout * 1000,
-      relayRpc,
-      relayNetwork,
-      onlyEstimateCost: true,
-      tryblocks,
-      erc20Addr,
-      privateKey: privateWalletKey,
-      publicKey: publicWalletKey,
-      devAddr,
-      feesPercentage,
-      gas,
-      gasMultiply
-    }
-
-    try {
-      const cost = await estimateCost(options)
-      setCost(cost)
-    } catch (e: any) {
-      console.error('estimate cost err: ', e.message)
-      return
+    if (mode == Mode.FLASHBOTS) {
+      console.log('check flashbots...')
+      const options = {
+        provider: provider,
+        timeout: timeout * 1000,
+        relayRpc,
+        relayNetwork,
+        onlyEstimateCost: true,
+        tryblocks,
+        erc20Addr,
+        privateKey: privateWalletKey,
+        publicKey: publicWalletKey,
+        devAddr,
+        feesPercentage,
+        gas,
+        gasMultiply
+      }
+  
+      try {
+        const cost = await estimateCost(options)
+        setCost(cost)
+      } catch (e: any) {
+        console.error('estimate cost err: ', e.message)
+        return
+      }
+    } else {
+      console.log('check defender...')
+      if (!erc20 || !metatx || !defender) {
+        alert('This network does not have supported defender yet')
+        return
+      }
+      try {
+        const cost = await getDefenderBundleTxCost(
+          provider, erc20, metatx, defender,
+          new ethers.Wallet(publicWallet, provider),
+          new ethers.Wallet(privateWallet, provider),
+          gas, gasMultiply
+        )
+        setCost(cost)
+      } catch(e: any) {
+        console.error('estimate cost err: ', e.message)
+        return
+      }
     }
 
     console.log('check payer balance...')
@@ -231,7 +323,15 @@ export default function Home(props: {}) {
           <span>Network: </span>
           <select onChange={onNetworkChange} defaultValue={SupportedChainId.GOERLI}>
             <option value={SupportedChainId.MAINNET}>Mainnet</option>
+            <option value={SupportedChainId.RINKEBY}>Rinkeby</option>
             <option value={SupportedChainId.GOERLI}>Goerli</option>
+          </select>
+          <span> Mode: </span>
+          <select onChange={onModeChange} defaultValue={isL2ChainIDs(chainId) ? Mode.FLASHBOTS : Mode.DEFENDER}>
+            {
+              isL2ChainIDs(chainId) ? <option value={Mode.FLASHBOTS}>Flashbots</option> : null
+            }
+            <option value={Mode.DEFENDER}>Defender</option>
           </select>
         </div>
         <div>
@@ -276,6 +376,7 @@ export default function Home(props: {}) {
         <div><span>receiver account: {privateWallet}</span></div>
         <div><span>your exposed account owned: {ethers.utils.formatUnits(erc20Bal, decimals)} {symbol}</span></div>
         <div><span>your receiver account will pay: {ethers.utils.formatEther(cost)} ETH</span></div>
+        {/* TODO: sometimes the value is not updated. */}
         <div><span>your receiver account will receive: {ethers.utils.formatUnits(receiveAmount, decimals)} {symbol}</span></div>
         <div><span>service addr: {devAddr}</span></div>
         <div><span>service fees: {feesPercentage} %</span></div>

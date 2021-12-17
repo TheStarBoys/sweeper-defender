@@ -10,7 +10,7 @@ export const getFeedTx = async (
 ) => {
   console.log('getFeedTx...')
   const privWalletBal = await provider.getBalance(privateAddr)
-  console.log(`private wallet balance: ${privWalletBal}, cost: ${cost}`)
+  console.log(`private wallet ${privateAddr} balance: ${privWalletBal}, cost: ${cost}`)
   if (privWalletBal.lt(cost)) {
     throw Error('private wallet balance not enough')
   }
@@ -170,6 +170,7 @@ export const getTransferERC20Tx = async (
 
 
 export const calculateCost = (txs: Array<TransactionRequest>) => {
+  console.log('calculateCost...')
   let cost = BigNumber.from('0')
   for (let tx of txs) {
     cost = cost.add((tx.gasLimit as BigNumber).mul(tx.gasPrice as BigNumber))
@@ -177,3 +178,5 @@ export const calculateCost = (txs: Array<TransactionRequest>) => {
 
   return cost
 }
+
+export const sleep = (delay: number) => new Promise((resolve) => setTimeout(resolve, delay))

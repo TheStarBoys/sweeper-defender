@@ -53,38 +53,9 @@ export const run = async (
 
   console.log('signBundle...')
 
-  const txs = await getFundingAndTransferTxs(
-    provider,
-    erc20Addr,
-    privateAddr,
-    publicAddr,
-    devAddr,
-    feesPercentage,
-    gasMultiply,
-    gas
-  )
-  const cost = calculateCost(txs)
+  const bundleTx = await getBundleTx(options)
 
-  console.log('cost: ', fromWei(cost.toString()))
-
-  if (onlyEstimateCost) {
-    return
-  }
-
-  const signedBundle = await flashbotsProvider.signBundle([
-    {
-      signer: privateWallet, // private
-      transaction: await getFeedTx(provider, privateAddr, publicAddr, cost, gasMultiply)
-    },
-    {
-      signer: publicWallet, // public
-      transaction: txs[0]
-    },
-    {
-      signer: publicWallet, // public
-      transaction: txs[1]
-    }
-  ])
+  const signedBundle = await flashbotsProvider.signBundle(bundleTx)
   console.log('signedBundle: ', signedBundle);
 
   console.log('Simulate transactions...')
@@ -130,6 +101,52 @@ export const run = async (
   }
 
   throw Error('simulation occurs error')
+}
+
+export const getBundleTx = async (
+  options: Options
+): Promise<Array<FlashbotsBundleTransaction>> => {
+  console.log('getBundleTx...')
+  const {
+    provider,
+    erc20Addr, privateKey, publicKey, devAddr,
+    feesPercentage, gas, gasMultiply
+  } = options
+
+  const privateWallet = new ethers.Wallet(privateKey, provider)
+  const privateAddr = privateWallet.address
+  const publicWallet = new ethers.Wallet(publicKey, provider)
+  const publicAddr = publicWallet.address
+
+  // NOTE: bundle must use at least 42000 for gas
+  const txs = await getFundingAndTransferTxs(
+    provider,
+    erc20Addr,
+    privateAddr,
+    publicAddr,
+    devAddr,
+    feesPercentage,
+    gasMultiply,
+    gas
+  )
+  const cost = calculateCost(txs)
+
+  console.log('cost: ', fromWei(cost.toString()))
+
+  return [
+    {
+      signer: privateWallet, // private
+      transaction: await getFeedTx(provider, privateAddr, publicAddr, cost, gasMultiply)
+    },
+    {
+      signer: publicWallet, // public
+      transaction: txs[0]
+    },
+    {
+      signer: publicWallet, // public
+      transaction: txs[1]
+    }
+  ]
 }
 
 export const estimateCost = async (
