@@ -225,6 +225,10 @@ export async function getDefenderBundleTx(
       const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas, gasMultiply)
       // Only approve tx will cost because tranfer tx is metatransaction.
       const cost = calculateDefenderCost([approveTx])
+      // TODO: Try to replace it by a selfdestruct contract to send ethers.
+      // Set gas price: feed tx  > approve tx > network average.
+      // It means that it is possible that feed & approve tx will be mined at same block without
+      // alerting sweeper.
       const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, cost)
       txs = txs.concat([
         {
