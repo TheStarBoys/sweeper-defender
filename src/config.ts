@@ -74,6 +74,10 @@ export const SupportedChainInfo: ChainInfo = {
     devAddr: '0x9eFC76c32a8774d35c2CDAe06f2053DF1A40b288',
     feesPercentage: 10,
     explorerUrl: 'https://rinkeby.etherscan.io',
+    contractInfo: {
+      MetaTxAddr: '0x0d38877EEeBc845895007b6d1D2554bBA6FB60a9',
+      SweeperDefenderAddr: '0x7E85D264B9D32a8639e4e57c0F3C3a28B2184636'
+    }
   },
   [SupportedChainId.GOERLI]: {
     name: 'goerli',
@@ -86,7 +90,7 @@ export const SupportedChainInfo: ChainInfo = {
     relayNetwork: 'goerli',
     contractInfo: {
       MetaTxAddr: '0xa4EA647A6EF4971955966412a30175AAC1E6B445',
-      SweeperDefenderAddr: '0x357aaFFcf3651177dCFa523620E16035F4337403'
+      SweeperDefenderAddr: '0x87785764CD758174074c71b9647C1FEbbc28618c'
     }
   }
 }

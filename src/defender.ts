@@ -25,6 +25,7 @@ export class TxDefender {
   timeout: number
   getTxMaxCount: number
   getTxInterval: number
+  waitTxInterval: number
   totalValue: BigNumber
   totalGas: BigNumber
   pendingTxSub: Subscription<string>
@@ -40,6 +41,7 @@ export class TxDefender {
     this.timeout = timeout
     this.getTxMaxCount = 12
     this.getTxInterval = 100
+    this.waitTxInterval = 100
 
     this.totalValue = BigNumber.from(0)
     this.totalGas = BigNumber.from(0)
@@ -66,26 +68,31 @@ export class TxDefender {
   async run() {
     this.pendingTxSub.on('data', async (txHash) => {
       for (let i = 0; i < this.getTxMaxCount; i++) {
+        let txResponse 
         try {
-          let txResponse = await this.provider.getTransaction(txHash)
-          if (!txResponse) {
-            await sleep(this.getTxInterval)
-            continue
-          }
-          // console.log('incoming txHash: ', txResponse.hash)
-          await this.onGetTxFromTxPool(txResponse)
-          break
-        } catch (err) {
-          console.error(err);
+          txResponse = await this.provider.getTransaction(txHash)
+        } catch (e: any) {
+          console.error('getTransactionResponse err: ', e.message);
         }
+
+        if (!txResponse) {
+          await sleep(this.getTxInterval)
+          continue
+        }
+        
+        // console.log('incoming txHash: ', txResponse.hash)
+        await this.onGetTxFromTxPool(txResponse)
+        break
       }
     })
 
     while (this.curr < this.txs.length) {
       await this.sendTx()
-      const succ = await this.waitForTransaction()
-      if (!succ) {
+      const code = await this.waitForTransaction()
+      if (code == 2) {
         throw Error('wait for transaction time out')
+      } else if(code == 1) {
+        throw Error('wait for transaction fails, maybe sweeper wins')
       }
     }
 
@@ -103,10 +110,20 @@ export class TxDefender {
     console.log("It's hacker tx, try to replace: ", incomingTx)
     let index = await this.indexOfHackerTx(incomingTx)
 
-    const nextGasPrice = BigNumber.from(incomingTx.gasPrice).mul(BigNumber.from(110)).div(BigNumber.from(100))
-    this.txs[index].transaction.gasPrice = nextGasPrice
-    // send again
-    this.sendTx()
+    let gasPrice = incomingTx.gasPrice
+    // If here occurs any error, retry again until count reaching max value.
+    for (let i = 0; i < 3; i++) {
+      console.log(`onGetTxFromTxPool for incomingTx: ${incomingTx.hash} try count ${i+1}`)
+      gasPrice = BigNumber.from(gasPrice).mul(BigNumber.from(110)).div(BigNumber.from(100))
+      this.txs[index].transaction.gasPrice = gasPrice
+      // send again
+      try {
+        await this.sendTx()
+        break
+      } catch(e: any) {
+        console.warn('onGetTxFromTxPool send tx err: ', e.message)
+      }
+    }
   }
 
   private async sendTx() {
@@ -133,34 +150,45 @@ export class TxDefender {
     console.log('send transaction after responses: ', this.txResponses)
   }
 
+  // Returns 0 if successes, 1 if fails, or 2 if time out
   private async waitForTransaction() {
-    console.log('wait for transaction, curr: ', this.curr)
+    console.log('waiting for transaction, curr: ', this.curr)
     let startTime = Date.now()
+    let failsCount = 0
     while (Date.now() - startTime < this.timeout) {
       try {
-        const txHash = this.txResponses[this.curr].hash
-        console.log('wait fot txhash: ', txHash)
+        const response = this.txResponses[this.curr]
+        const nonce = await this.provider.getTransactionCount(response.from)
+        const txHash = response.hash
+        console.log('waiting fot txhash: ', txHash)
         if (!txHash) {
-          sleep(100)
+          sleep(this.waitTxInterval)
           continue
         }
         const receipt = await this.provider.getTransactionReceipt(txHash)
 
         if (!receipt) {
-          sleep(100)
+          if (nonce > response.nonce) {
+            console.info('Unfortunatelly, sweeper wins!')
+            failsCount++
+            if (failsCount == 15) {
+              return 1
+            }
+          }
+          sleep(this.waitTxInterval)
           continue
         }
         this.txReceipts = this.txReceipts.concat(receipt)
         this.curr++
-        console.log(`wait for transaction ${receipt.transactionHash} succ`)
-        return true
+        console.log(`waiting for transaction ${receipt.transactionHash} succ`)
+        return 0
       } catch (e: any) {
-        console.error('wait for transaction err: ', e.message)
-        return false
+        console.error('waiting for transaction err: ', e.message)
+        return 1
       }
     }
 
-    return false
+    return 2
   }
 
   async indexOfHackerTx(incomingTx: TransactionResponse) {
@@ -198,9 +226,29 @@ export async function getDefenderBundleTxCost(
   gasMultiply?: BigNumber
 ): Promise<BigNumber> {
   console.log('getDefenderBundleTxCost...')
-  // TODO: There is a bug.
-  const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas, gasMultiply)
-  return calculateDefenderCost([approveTx])
+  let cost = BigNumber.from(0)
+
+  try {
+    const allowance = await erc20.callStatic.allowance(publicWallet.address, defender.address)
+    const erc20Bal = await erc20.callStatic.balanceOf(publicWallet.address)
+    console.log(`getDefenderBundleTx allowance: ${allowance} erc20Bal: ${erc20Bal}`)
+    if (allowance.lt(erc20Bal)) {
+      console.log('getDefenderBundleTx needs to approve...')
+      const approveTx = await getApproveERC20Tx(provider, erc20, defender, publicWallet.address, gas, gasMultiply)
+      // Only approve tx will cost because tranfer tx is metatransaction.
+      const feedTx = await getFeedTx(provider, privateWallet.address, publicWallet.address, calculateDefenderCost([approveTx]))
+      cost = cost.add(calculateDefenderCost([approveTx, feedTx]))
+    } else {
+      // clear gas for transfer tx because approve tx has been mined
+      gas = undefined
+    }
+  } catch (e: any) {
+    throw Error('getDefenderBundleTxCost tries to approve err: ' + e.messsage)
+  }
+
+  const transferTx = await getDelegateFundingAndTransferTx(provider, erc20, metatx, defender, publicWallet, privateWallet, gas)
+
+  return cost.add(calculateDefenderCost([transferTx]))
 }
 
 export async function getDefenderBundleTx(
@@ -304,7 +352,7 @@ async function getDelegateFundingAndTransferTx(
       throw Error('meta tx is invalid')
     }
   } catch (e: any) {
-    throw Error('meta tx call verify failed: ' + e.message)
+    throw Error('meta tx calls verify failed: ' + e.message)
   }
 
   try {
@@ -315,7 +363,7 @@ async function getDelegateFundingAndTransferTx(
     // gas = await metatx.estimateGas.execute(req, signature)
     gas = gas ? gas.mul(2) : BigNumber.from('300000')
   } catch (e: any) {
-    throw Error('meta tx call execute failed: ' + e.message)
+    throw Error('meta tx calls execute failed: ' + e.message)
   }
 
   const data = metatx.interface.encodeFunctionData('execute', [req, signature])
@@ -339,9 +387,9 @@ async function getFundingAndTransferMetaTx(
   console.log('getFundingAndTransferMetaTx...')
   if (!gas) {
     try {
-      gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: privateAddr })
+      gas = await defender.estimateGas.fundingAndTransfer(erc20.address, privateAddr, { from: publicAddr })
     } catch (e: any) {
-      throw Error('Defender call fundingAndTransfer failed: ' + e.message)
+      throw Error('Defender calls fundingAndTransfer failed: ' + e.message)
     }
   }
 

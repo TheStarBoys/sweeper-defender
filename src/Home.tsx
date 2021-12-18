@@ -55,7 +55,8 @@ export default function Home(props: {}) {
 
   useEffect(() => {
     console.log('update network info')
-    setProvider(ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl))
+    const provider = ethers.getDefaultProvider(SupportedChainInfo[chainId].chainUrl)
+    setProvider(provider)
     setExplorerUrl(SupportedChainInfo[chainId].explorerUrl)
     if (isL2ChainIDs(chainId)) {
       const info = SupportedChainInfo[chainId] as L2ChainInfo
@@ -63,6 +64,9 @@ export default function Home(props: {}) {
       setRelayNetwork(info.relayNetwork)
     }
     
+    provider.getNetwork().then(network => {
+      console.log('provider: ', network)
+    })
     setDevAddr(SupportedChainInfo[chainId].devAddr)
 
     const contractInfo = SupportedChainInfo[chainId].contractInfo
