@@ -7,20 +7,17 @@ import { Subscription } from 'web3-core-subscriptions'
 import { ERC20, MinimalForwarder, SweeperDefender } from './contracts'
 import { ForwardRequest, SignForwardRequest } from './metatx'
 
+/*
+TxDefender protects a bunch of transactions and protects succussful with gas price outbidding.
+Increase gas price and rebroadcast that tx when receiving sweeper's tx from mempool.
+*/
 export class TxDefender {
-  /*
-  TxDefender
-  1. 传入需要保护的交易，交易顺序即执行顺序
-  2. TxDefender 去检测公共 txpool 是否有黑客抬高 gas price，如有有，提高 gas price 并重新广播交易
-  3. gas price 的区间为 [0, (balance-value) / gas]
-  */
-
   web3: Web3
   provider: BaseProvider
   txs: Array<FlashbotsBundleTransaction>
   txResponses: Array<TransactionResponse>
   txReceipts: Array<TransactionReceipt>
-  curr: number // It reports which tx was mined.
+  curr: number
   confirmations: number
   timeout: number
   getTxMaxCount: number
@@ -64,11 +61,10 @@ export class TxDefender {
     }
   }
 
-  // TODO: Exception handle.
   async run() {
     this.pendingTxSub.on('data', async (txHash) => {
       for (let i = 0; i < this.getTxMaxCount; i++) {
-        let txResponse 
+        let txResponse
         try {
           txResponse = await this.provider.getTransaction(txHash)
         } catch (e: any) {
@@ -79,7 +75,7 @@ export class TxDefender {
           await sleep(this.getTxInterval)
           continue
         }
-        
+
         // console.log('incoming txHash: ', txResponse.hash)
         await this.onGetTxFromTxPool(txResponse)
         break
@@ -90,9 +86,9 @@ export class TxDefender {
       await this.sendTx()
       const code = await this.waitForTransaction()
       if (code == 2) {
-        throw Error('wait for transaction time out')
-      } else if(code == 1) {
-        throw Error('wait for transaction fails, maybe sweeper wins')
+        throw Error('waiting for transaction time out')
+      } else if (code == 1) {
+        throw Error('waiting for transaction fails, maybe sweeper wins')
       }
     }
 
@@ -113,14 +109,14 @@ export class TxDefender {
     let gasPrice = incomingTx.gasPrice
     // If here occurs any error, retry again until count reaching max value.
     for (let i = 0; i < 3; i++) {
-      console.log(`onGetTxFromTxPool for incomingTx: ${incomingTx.hash} try count ${i+1}`)
+      console.log(`onGetTxFromTxPool for incomingTx: ${incomingTx.hash} try count ${i + 1}`)
       gasPrice = BigNumber.from(gasPrice).mul(BigNumber.from(110)).div(BigNumber.from(100))
       this.txs[index].transaction.gasPrice = gasPrice
       // send again
       try {
         await this.sendTx()
         break
-      } catch(e: any) {
+      } catch (e: any) {
         console.warn('onGetTxFromTxPool send tx err: ', e.message)
       }
     }
